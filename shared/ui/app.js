@@ -65,11 +65,8 @@ const state = {
       guardrails: false,
     },
     production: {
-      enabled: false,
-      model_routing: false,
-      logging: false,
-      fallback: false,
-      cost_control: false,
+      cost_management: false,
+      multi_demand: false,
     },
   },
   runtime_env: {
@@ -372,7 +369,12 @@ function saveStateToStorage() {
     createdAt: conv.createdAt,
     messages: (conv.messages || [])
       .filter((msg) => !msg.thinking && (msg.role === "user" || msg.role === "assistant"))
-      .map((msg) => ({ id: msg.id, role: msg.role, text: msg.text })),
+      .map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        text: msg.text,
+        usage: msg && typeof msg.usage === "object" ? msg.usage : null,
+      })),
   }));
 
   const payload = {
@@ -453,6 +455,7 @@ function normalizeConversations(rawConversations) {
               id: typeof msg.id === "string" ? msg.id : undefined,
               role: msg.role,
               text: typeof msg.text === "string" ? msg.text : "",
+              usage: msg && typeof msg.usage === "object" ? msg.usage : null,
             }))
         : [],
     }));
@@ -621,6 +624,7 @@ function runMockThinkingReply(userText, conversationId) {
       conversationId,
       thinkingId,
       `我收到你的文字了：「${userText}」。\n目前尚未連接後端 AI 服務。\n如果要啟用 AI 功能，請在右側調整設定，並啟動對應 Section 的後端。`,
+      null,
     );
   }, 3000);
 }
@@ -685,7 +689,24 @@ async function runBackendThinkingReply(userText, imageDataUrl, uploadedFile, con
     const data = await response.json();
     conversation.pendingRoute = data.pending_route || null;
     scheduleSaveState();
-    replaceThinkingWithFinal(conversationId, thinkingId, data.reply || "後端未回傳內容。");
+    const multiReplies = Array.isArray(data.multi_replies)
+      ? data.multi_replies.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    if (multiReplies.length > 0) {
+      replaceThinkingWithFinal(conversationId, thinkingId, multiReplies[0], null);
+      for (let i = 1; i < multiReplies.length; i += 1) {
+        const isLast = i === multiReplies.length - 1;
+        appendAssistantMessage(conversationId, multiReplies[i], isLast ? (data.usage || null) : null);
+      }
+      if (multiReplies.length === 1) {
+        const conv = getConversationById(conversationId);
+        if (conv && conv.messages.length > 0) {
+          conv.messages[conv.messages.length - 1].usage = data.usage || null;
+        }
+      }
+    } else {
+      replaceThinkingWithFinal(conversationId, thinkingId, data.reply || "後端未回傳內容。", data.usage || null);
+    }
     if (data?.router?.action_type === "tool" && data?.router?.target === "create_task") {
       await loadTasksFromBackend();
     }
@@ -694,20 +715,31 @@ async function runBackendThinkingReply(userText, imageDataUrl, uploadedFile, con
       conversationId,
       thinkingId,
       `後端呼叫失敗：${String(error)}\n請確認 Section 後端是否已成功啟動。`,
+      null,
     );
   } finally {
     clearInterval(interval);
   }
 }
 
-function replaceThinkingWithFinal(conversationId, thinkingId, finalText) {
+function replaceThinkingWithFinal(conversationId, thinkingId, finalText, usage = null) {
   const conversation = getConversationById(conversationId);
   if (!conversation) return;
 
   const idx = conversation.messages.findIndex((msg) => msg.id === thinkingId);
   if (idx === -1) return;
 
-  conversation.messages[idx] = { role: "assistant", text: finalText };
+  conversation.messages[idx] = { role: "assistant", text: finalText, usage: usage || null };
+  bumpConversation(conversationId);
+  scheduleSaveState();
+  renderIfCurrent(conversationId);
+  renderConversations();
+}
+
+function appendAssistantMessage(conversationId, text, usage = null) {
+  const conversation = getConversationById(conversationId);
+  if (!conversation) return;
+  conversation.messages.push({ role: "assistant", text, usage: usage || null });
   bumpConversation(conversationId);
   scheduleSaveState();
   renderIfCurrent(conversationId);
@@ -977,7 +1009,24 @@ function getLastVisibleMessage(conversation) {
 
 function renderCurrentConversationTitle() {
   const conversation = getCurrentConversation();
-  currentChatTitle.textContent = conversation ? conversation.title : "新聊天室";
+  if (!conversation) {
+    currentChatTitle.textContent = "新聊天室";
+    return;
+  }
+  const usageSummary = calculateConversationUsage(conversation);
+  if (usageSummary.totalTokens > 0) {
+    const modelRows = Object.entries(usageSummary.byModel || {});
+    if (modelRows.length <= 1) {
+      currentChatTitle.textContent = `${conversation.title} · Tokens ${usageSummary.totalTokens} · NT$${usageSummary.totalCost.toFixed(4)}`;
+      return;
+    }
+    const modelParts = modelRows
+      .map(([model, row]) => `${model}: ${row.tokens} tok / NT$${row.cost.toFixed(4)}`)
+      .join(" ; ");
+    currentChatTitle.textContent = `${conversation.title} · Tokens ${usageSummary.totalTokens} · NT$${usageSummary.totalCost.toFixed(4)} · ${modelParts}`;
+    return;
+  }
+  currentChatTitle.textContent = conversation.title;
 }
 
 function renderControls() {
@@ -1210,28 +1259,14 @@ function renderSecurityControls(container, locked) {
 }
 
 function renderProductionControls(container, locked) {
-  container.appendChild(createCheckbox("Enable Production Mode", state.config.production.enabled, (value) => {
-    state.config.production.enabled = value;
+  container.appendChild(createCheckbox("Enable Cost Management", state.config.production.cost_management, (value) => {
+    state.config.production.cost_management = value;
     renderConfigPreview();
+    renderCurrentConversationTitle();
   }, locked));
 
-  container.appendChild(createCheckbox("Enable Model Routing", state.config.production.model_routing, (value) => {
-    state.config.production.model_routing = value;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createCheckbox("Enable Logging", state.config.production.logging, (value) => {
-    state.config.production.logging = value;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createCheckbox("Enable Fallback", state.config.production.fallback, (value) => {
-    state.config.production.fallback = value;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createCheckbox("Enable Cost Control", state.config.production.cost_control, (value) => {
-    state.config.production.cost_control = value;
+  container.appendChild(createCheckbox("Enable Multi-Demand", state.config.production.multi_demand, (value) => {
+    state.config.production.multi_demand = value;
     renderConfigPreview();
   }, locked));
 }
@@ -1433,11 +1468,8 @@ function buildExportedConfig() {
       guardrails: state.currentSection >= 5 ? state.config.security.guardrails : false,
     },
     production: {
-      enabled: state.currentSection >= 6 ? state.config.production.enabled : false,
-      model_routing: state.config.production.model_routing,
-      logging: state.config.production.logging,
-      fallback: state.config.production.fallback,
-      cost_control: state.config.production.cost_control,
+      cost_management: state.currentSection >= 6 ? state.config.production.cost_management : false,
+      multi_demand: state.currentSection >= 6 ? state.config.production.multi_demand : false,
     },
   };
 }
@@ -1786,6 +1818,12 @@ function renderChat() {
     }
 
     el.appendChild(content);
+    if (msg.usage && typeof msg.usage === "object") {
+      const footer = document.createElement("div");
+      footer.className = "msg-usage";
+      footer.textContent = formatUsageFooter(msg.usage);
+      el.appendChild(footer);
+    }
     chatHistory.appendChild(el);
   });
 
@@ -1795,6 +1833,37 @@ function renderChat() {
 function renderPlainText(text) {
   const normalized = normalizeEscapedNewlines(text);
   return escapeHtml(normalized).replace(/\n/g, "<br>");
+}
+
+function formatUsageFooter(usage) {
+  const input = Number(usage?.input_tokens?.total || 0);
+  const output = Number(usage?.output_tokens || 0);
+  const model = String(usage?.model || "");
+  return `Model: ${model} | in: ${input} tok | out: ${output} tok`;
+}
+
+function calculateConversationUsage(conversation) {
+  if (!conversation || !Array.isArray(conversation.messages)) {
+    return { totalTokens: 0, totalCost: 0, byModel: {} };
+  }
+  let totalTokens = 0;
+  let totalCost = 0;
+  const byModel = {};
+  conversation.messages.forEach((msg) => {
+    const usage = msg?.usage;
+    if (!usage || typeof usage !== "object") return;
+    const model = String(usage.model || "unknown");
+    const tokens = Number(usage.total_tokens || 0);
+    const cost = Number(usage.cost_twd || (Number(usage.cost_usd || 0) * 32));
+    totalTokens += tokens;
+    totalCost += cost;
+    if (!byModel[model]) {
+      byModel[model] = { tokens: 0, cost: 0 };
+    }
+    byModel[model].tokens += tokens;
+    byModel[model].cost += cost;
+  });
+  return { totalTokens, totalCost, byModel };
 }
 
 function renderMarkdown(text) {
