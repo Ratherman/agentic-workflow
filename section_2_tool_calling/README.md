@@ -46,6 +46,10 @@ TAVILY_API_KEY=你的_tavily_api_key
 - `Auto (LLM decides)`：Router 判斷為 tool 後，直接執行
 - `Manual (debug)`：Router 判斷為 tool 後，先詢問 Yes/No，再決定是否執行
 
+### 4. LLM Mode 與 Routing 來源
+- `LLM-based`：100% 走 LLM Router（不使用本地 shortcut）
+- `Rule-based`：可使用關鍵字規則與快速命中（shortcut）
+
 ## 可直接測試的句子
 
 ### A. Create Task

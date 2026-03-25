@@ -1,6 +1,6 @@
 ﻿const sectionNames = {
   0: "Section 0 - LLM Core",
-  1: "Section 1 - Workflow Routing",
+  1: "Section 1 - Patterns",
   2: "Section 2 - Tool Calling",
   3: "Section 3 - Webhook Integration",
   4: "Section 4 - Code Execution",
@@ -49,8 +49,9 @@ const state = {
     },
     webhook: {
       enabled: false,
-      workflows: [],
-      endpoints_json: '{"notify":"","task":"","query":""}',
+      workflows: ["calendar_query"],
+      calendar_query_url: "",
+      mode: "manual",
     },
     code_execution: {
       enabled: false,
@@ -258,6 +259,16 @@ function loadStateFromStorage() {
       state.config.tool = { ...state.config.tool, ...(saved.config.tool || {}) };
       state.config.tool.tools = ["create_task", "search_web"];
       state.config.webhook = { ...state.config.webhook, ...(saved.config.webhook || {}) };
+      if (!state.config.webhook.calendar_query_url) {
+        const legacyEndpoints = safeParseJson(state.config.webhook.endpoints_json || "");
+        if (legacyEndpoints && typeof legacyEndpoints === "object") {
+          state.config.webhook.calendar_query_url = String(
+            legacyEndpoints.calendar_query || legacyEndpoints.query || "",
+          );
+        }
+      }
+      state.config.webhook.workflows = ["calendar_query"];
+      state.config.webhook.mode = state.config.webhook.mode === "auto" ? "auto" : "manual";
       state.config.code_execution = { ...state.config.code_execution, ...(saved.config.code_execution || {}) };
       state.config.security = { ...state.config.security, ...(saved.config.security || {}) };
       state.config.production = { ...state.config.production, ...(saved.config.production || {}) };
@@ -409,7 +420,9 @@ function sendMessage(forcedText = null) {
 
   const conversation = getCurrentConversation();
   if (!conversation) return;
-  if (conversation.pendingRoute && forcedText === null) {
+  const pending = conversation.pendingRoute || null;
+  const shouldLockInput = pending && pending.stage !== "collect_datetime";
+  if (shouldLockInput && forcedText === null) {
     alert("目前正在等待路由確認，請直接點選 Yes / No 按鈕。");
     return;
   }
@@ -849,7 +862,7 @@ function renderCurrentConversationTitle() {
 function renderControls() {
   controlsRoot.innerHTML = "";
   controlsRoot.appendChild(renderSectionCard(0, "LLM Core Settings", renderLLMControls));
-  controlsRoot.appendChild(renderSectionCard(1, "Workflow Routing", renderWorkflowControls));
+  controlsRoot.appendChild(renderSectionCard(1, "Patterns", renderWorkflowControls));
   controlsRoot.appendChild(renderSectionCard(2, "Tool Calling", renderToolControls));
   controlsRoot.appendChild(renderSectionCard(3, "Webhook Integration", renderWebhookControls));
   controlsRoot.appendChild(renderSectionCard(4, "Code Execution", renderCodeExecutionControls));
@@ -863,7 +876,7 @@ function renderSectionCard(unlockSection, title, renderer) {
   const titleNode = node.querySelector(".section-title");
   const lockTag = node.querySelector(".lock-tag");
   const lockedBySection = state.currentSection < unlockSection;
-  const lockedByFreshMode = unlockSection === 0 && !hasBackend;
+  const lockedByFreshMode = unlockSection === 0 && !hasBackend && maxSection === 0;
   const locked = lockedBySection || lockedByFreshMode;
 
   titleNode.textContent = title;
@@ -983,21 +996,40 @@ function renderWebhookControls(container, locked) {
   container.appendChild(createCheckbox("Enable Webhook Mode", state.config.webhook.enabled, (value) => {
     state.config.webhook.enabled = value;
     renderConfigPreview();
+    renderControls();
   }, locked));
 
-  container.appendChild(createCheckboxList("Available Workflows", [
-    ["notify", "Notify Team (n8n)"],
-    ["task", "Create Task (n8n)"],
-    ["query", "Query Data (n8n)"],
-  ], state.config.webhook.workflows, (arr) => {
-    state.config.webhook.workflows = arr;
-    renderConfigPreview();
-  }, locked));
+  const workflowsBlock = document.createElement("div");
+  const workflowsTitle = document.createElement("div");
+  workflowsTitle.textContent = "Available Workflows";
+  const workflowsList = document.createElement("div");
+  workflowsList.className = "option-grid";
+  workflowsList.textContent = "calendar_query (n8n)";
+  if (locked || !state.config.webhook.enabled) {
+    workflowsList.style.opacity = "0.5";
+  }
+  workflowsBlock.appendChild(workflowsTitle);
+  workflowsBlock.appendChild(workflowsList);
+  container.appendChild(workflowsBlock);
 
-  container.appendChild(createTextarea("Endpoint Config (JSON)", state.config.webhook.endpoints_json, (value) => {
-    state.config.webhook.endpoints_json = value;
+  container.appendChild(createTextInput(
+    "Calendar Query Webhook URL",
+    state.config.webhook.calendar_query_url || "",
+    (value) => {
+      state.config.webhook.calendar_query_url = value;
+      renderConfigPreview();
+    },
+    locked || !state.config.webhook.enabled,
+    "https://your-n8n-domain/webhook/calendar_query",
+  ));
+
+  container.appendChild(createRadioGroup("Workflow Mode", "webhook_mode", [
+    ["auto", "Auto (execute directly)"],
+    ["manual", "Manual (ask Yes/No)"],
+  ], state.config.webhook.mode || "manual", (value) => {
+    state.config.webhook.mode = value;
     renderConfigPreview();
-  }, locked));
+  }, locked || !state.config.webhook.enabled));
 }
 
 function renderCodeExecutionControls(container, locked) {
@@ -1117,6 +1149,23 @@ function createTextarea(label, value, onChange, disabled) {
   input.value = value;
   input.disabled = disabled;
   input.rows = 4;
+  input.addEventListener("input", (event) => onChange(event.target.value));
+
+  wrap.appendChild(title);
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function createTextInput(label, value, onChange, disabled, placeholder = "") {
+  const wrap = document.createElement("div");
+  const title = document.createElement("div");
+  title.textContent = label;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value;
+  input.placeholder = placeholder;
+  input.disabled = disabled;
   input.addEventListener("input", (event) => onChange(event.target.value));
 
   wrap.appendChild(title);
@@ -1248,8 +1297,11 @@ function buildExportedConfig() {
     },
     webhook: {
       enabled: state.currentSection >= 3 ? state.config.webhook.enabled : false,
-      workflows: state.config.webhook.workflows,
-      endpoints: safeParseJson(state.config.webhook.endpoints_json),
+      workflows: ["calendar_query"],
+      mode: state.config.webhook.mode || "manual",
+      endpoints: {
+        calendar_query: state.config.webhook.calendar_query_url || "",
+      },
     },
     code_execution: {
       enabled: state.currentSection >= 4 ? state.config.code_execution.enabled : false,
@@ -1569,7 +1621,9 @@ function renderTaskPanel() {
 
 function renderRouteConfirmBar() {
   const conversation = getCurrentConversation();
-  if (!conversation || !conversation.pendingRoute) {
+  const pending = conversation?.pendingRoute || null;
+  const isCollecting = pending && pending.stage === "collect_datetime";
+  if (!conversation || !pending || isCollecting) {
     routeConfirmBar.hidden = true;
     chatInputRow?.classList.remove("confirm-pending");
     chatInput.disabled = false;
@@ -1578,7 +1632,7 @@ function renderRouteConfirmBar() {
     chatInput.placeholder = DEFAULT_CHAT_PLACEHOLDER;
     return;
   }
-  routeConfirmText.textContent = `是否要執行 ${conversation.pendingRoute.action_type}：${conversation.pendingRoute.target}？`;
+  routeConfirmText.textContent = `是否要執行 ${pending.action_type}：${pending.target}？`;
   routeConfirmBar.hidden = false;
   chatInputRow?.classList.add("confirm-pending");
   chatInput.disabled = true;
@@ -1621,11 +1675,12 @@ function renderChat() {
 }
 
 function renderPlainText(text) {
-  return escapeHtml(text).replace(/\n/g, "<br>");
+  const normalized = normalizeEscapedNewlines(text);
+  return escapeHtml(normalized).replace(/\n/g, "<br>");
 }
 
 function renderMarkdown(text) {
-  const normalizedText = normalizeReferenceTitleLinks(text);
+  const normalizedText = normalizeReferenceTitleLinks(normalizeEscapedNewlines(text));
   const escaped = escapeHtml(normalizedText);
   const fencedRe = /```([\s\S]*?)```/g;
   const codeBlocks = [];
@@ -1732,6 +1787,10 @@ function renderMarkdown(text) {
     out = out.replace(`@@CODEBLOCK_${idx}@@`, block);
   });
   return out;
+}
+
+function normalizeEscapedNewlines(text) {
+  return String(text || "").replace(/\\n/g, "\n");
 }
 
 function normalizeReferenceTitleLinks(text) {

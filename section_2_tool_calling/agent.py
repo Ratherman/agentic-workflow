@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from section_0_basic_llm.llm import run_chat
-from section_1_workflow_patterns.schemas import RouteDecision
+from section_1_patterns.schemas import RouteDecision
 from section_2_tool_calling.tools import create_task, search_web
 
-WORKFLOW_TARGETS = ["article_research", "calendar_query"]
+WORKFLOW_TARGETS = ["calendar_query"]
 TOOL_TARGETS = ["create_task", "search_web"]
 
 TOOL_REGISTRY = {
@@ -62,9 +62,6 @@ def _rule_route(user_message: str) -> RouteDecision:
         return RouteDecision(action_type="tool", target="create_task", reason="規則命中：任務建立關鍵字")
     if any(k in text for k in ["查網路", "搜尋網路", "上網查", "search web", "google", "tavily"]):
         return RouteDecision(action_type="tool", target="search_web", reason="規則命中：網路搜尋關鍵字")
-
-    if any(k in text for k in ["文章研究", "研究文章", "文獻研究", "article research"]):
-        return RouteDecision(action_type="workflow", target="article_research", reason="規則命中：文章研究流程")
 
     return RouteDecision(action_type="llm", target="none", reason="未命中規則，改走一般 LLM 回答")
 
@@ -366,27 +363,30 @@ def handle_section2_chat(
         }
 
     llm_mode = _to_llm_mode(config)
-    if tool_enabled and _looks_like_task_intent(user_message):
-        decision = RouteDecision(
-            action_type="tool",
-            target="create_task",
-            reason="quick intent: user explicitly asked to create task",
-        )
-        raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
-        route_mode = "shortcut"
-    elif tool_enabled and _looks_like_web_search_intent(user_message):
-        decision = RouteDecision(
-            action_type="tool",
-            target="search_web",
-            reason="quick intent: user explicitly asked for web search",
-        )
-        raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
-        route_mode = "shortcut"
-    elif llm_mode == "rule":
-        decision = _rule_route(user_message)
-        raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
-        route_mode = "rule"
+    if llm_mode == "rule":
+        # In rule-based mode we intentionally allow fast keyword routing.
+        if tool_enabled and _looks_like_task_intent(user_message):
+            decision = RouteDecision(
+                action_type="tool",
+                target="create_task",
+                reason="quick intent: user explicitly asked to create task",
+            )
+            raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
+            route_mode = "shortcut"
+        elif tool_enabled and _looks_like_web_search_intent(user_message):
+            decision = RouteDecision(
+                action_type="tool",
+                target="search_web",
+                reason="quick intent: user explicitly asked for web search",
+            )
+            raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
+            route_mode = "shortcut"
+        else:
+            decision = _rule_route(user_message)
+            raw_output = json.dumps(decision.model_dump(), ensure_ascii=False)
+            route_mode = "rule"
     else:
+        # In llm-based mode, always use LLM router (no shortcut/heuristic override).
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         structured_mode = _to_router_mode(config)
         decision, raw_output = _route_with_llm(
@@ -399,7 +399,7 @@ def handle_section2_chat(
 
     # Section 2 UX guardrail:
     # if user clearly asks to create a task, do not drift to workflow routing.
-    if _looks_like_task_intent(user_message) and decision.action_type != "tool":
+    if llm_mode == "rule" and _looks_like_task_intent(user_message) and decision.action_type != "tool":
         decision = RouteDecision(
             action_type="tool",
             target="create_task",

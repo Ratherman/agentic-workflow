@@ -2,11 +2,9 @@
 from typing import Any, Dict, Tuple
 
 from openai import OpenAI
-from pydantic import ValidationError
+from section_1_patterns.schemas import RouteDecision
 
-from section_1_workflow_patterns.schemas import RouteDecision
-
-ALLOWED_WORKFLOWS = ["article_research", "calendar_query"]
+ALLOWED_WORKFLOWS = ["calendar_query", "code_execution"]
 ALLOWED_TOOLS = ["search_web", "create_task"]
 
 
@@ -43,16 +41,6 @@ def route_with_rules(user_message: str) -> RouteDecision:
         "search web",
         "google",
     ]
-    workflow_article_keywords = [
-        "研究文章",
-        "整理文章",
-        "文章研究",
-        "文獻研究",
-        "做研究",
-        "資料彙整",
-        "article research",
-        "research article",
-    ]
     workflow_calendar_keywords = [
         "查行事曆",
         "看行程",
@@ -63,6 +51,19 @@ def route_with_rules(user_message: str) -> RouteDecision:
         "今天有會議嗎",
         "calendar",
         "schedule",
+    ]
+    workflow_code_keywords = [
+        "執行程式碼",
+        "執行 python",
+        "執行一段 python",
+        "python 程式",
+        "python代碼",
+        "python 程式碼",
+        "跑程式",
+        "跑一段程式",
+        "code execution",
+        "run code",
+        "execute code",
     ]
 
     if any(keyword in normalized for keyword in tool_create_task_keywords):
@@ -77,17 +78,26 @@ def route_with_rules(user_message: str) -> RouteDecision:
             target="search_web",
             reason="規則命中：網路搜尋相關關鍵字",
         )
-    if any(keyword in normalized for keyword in workflow_article_keywords):
-        return RouteDecision(
-            action_type="workflow",
-            target="article_research",
-            reason="規則命中：文章研究流程關鍵字",
-        )
     if any(keyword in normalized for keyword in workflow_calendar_keywords):
         return RouteDecision(
             action_type="workflow",
             target="calendar_query",
             reason="規則命中：行事曆查詢流程關鍵字",
+        )
+    if (
+        ("執行" in normalized or "跑" in normalized or "run" in normalized or "execute" in normalized)
+        and ("python" in normalized or "程式碼" in normalized or "代碼" in normalized or "code" in normalized)
+    ):
+        return RouteDecision(
+            action_type="workflow",
+            target="code_execution",
+            reason="規則命中：程式執行意圖（動詞 + code/python）",
+        )
+    if any(keyword in normalized for keyword in workflow_code_keywords):
+        return RouteDecision(
+            action_type="workflow",
+            target="code_execution",
+            reason="規則命中：程式執行流程關鍵字",
         )
 
     return RouteDecision(
@@ -105,6 +115,11 @@ def _build_router_prompt() -> str:
         f"If action_type=workflow, target must be one of: {', '.join(ALLOWED_WORKFLOWS)}.\\n"
         f"If action_type=tool, target must be one of: {', '.join(ALLOWED_TOOLS)}.\\n"
         "If action_type=llm, target must be 'none'.\\n"
+        "Routing priority examples:\\n"
+        "- Calendar/schedule query -> workflow/calendar_query\\n"
+        "- Any request to run/execute code (especially Python) -> workflow/code_execution\\n"
+        "- Task creation or web search -> tool target\\n"
+        "Do NOT answer the user question; only route it.\\n"
         "Do NOT put a target name into action_type.\\n"
         "reason must be concise and user-facing."
     )

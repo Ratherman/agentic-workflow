@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from section_0_basic_llm.llm import run_chat
-from section_1_workflow_patterns.router_llm import route_intent, route_with_rules
+from section_1_patterns.router_llm import route_intent, route_with_rules
 
 
 def _to_llm_mode(config: Dict[str, Any]) -> str:
@@ -29,6 +29,15 @@ def _is_confirmation_message(text: str) -> Optional[bool]:
     return None
 
 
+def _looks_like_code_execution_intent(text: str) -> bool:
+    normalized = (text or "").strip().lower()
+    if "python" in normalized:
+        return True
+    action_words = ["執行", "跑", "run", "execute"]
+    code_words = ["python", "程式碼", "代碼", "code"]
+    return any(w in normalized for w in action_words) and any(w in normalized for w in code_words)
+
+
 def handle_section1_chat(
     user_message: str,
     config: Dict[str, Any],
@@ -48,6 +57,17 @@ def handle_section1_chat(
             if action_type == "tool":
                 return {
                     "reply": f"你選擇 Yes。Tool `{target}` 將於 Section 2 實作。",
+                    "router": {
+                        "action_type": action_type,
+                        "target": target,
+                        "reason": router_context.get("reason", ""),
+                        "mode": router_context.get("mode", "pydantic"),
+                    },
+                    "pending_route": None,
+                }
+            if target == "code_execution":
+                return {
+                    "reply": f"你選擇 Yes。Pattern `{target}` 將於 Section 4 實作。",
                     "router": {
                         "action_type": action_type,
                         "target": target,
@@ -103,11 +123,27 @@ def handle_section1_chat(
             user_message=user_message,
         )
 
-    header = (
-        f"[Router → {decision.action_type.upper()}]"
-        if decision.action_type != "llm"
-        else "[Router → LLM]"
-    )
+    # Safety override for both rule-based and llm-based routing:
+    # if user clearly asks to execute code, force route to code_execution workflow.
+    if _looks_like_code_execution_intent(user_message) and not (
+        decision.action_type == "workflow" and decision.target == "code_execution"
+    ):
+        decision = decision.model_copy(
+            update={
+                "action_type": "workflow",
+                "target": "code_execution",
+                "reason": "code execution intent override: user asked to run code",
+            }
+        )
+
+    if decision.action_type == "workflow" and decision.target == "code_execution":
+        header = "[Router → CODE]"
+    else:
+        header = (
+            f"[Router → {decision.action_type.upper()}]"
+            if decision.action_type != "llm"
+            else "[Router → LLM]"
+        )
     target_part = f" {decision.target}" if decision.action_type != "llm" else ""
 
     reason_line = f"Reason: {decision.reason}"

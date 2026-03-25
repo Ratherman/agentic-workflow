@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from section_0_basic_llm.llm import generate_chat_title
-from section_1_workflow_patterns.agent import handle_section1_chat
+from section_1_patterns.agent import handle_section1_chat
 from shared.conversation_store import load_conversations_state, save_conversations_state
 from shared.task_store import load_tasks, create_task, toggle_task, update_task, delete_task
 
@@ -57,6 +57,7 @@ class ConversationsSyncRequest(BaseModel):
 
 class Section1Handler(BaseHTTPRequestHandler):
     server_version = "Section1HTTP/0.1"
+    app_version = "section1-patterns-v2-code-override"
 
     def _set_headers(self, status_code: int = 200, content_type: str = "application/json") -> None:
         self.send_response(status_code)
@@ -73,7 +74,25 @@ class Section1Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         if path == "/health":
             self._set_headers(200)
-            self.wfile.write(json.dumps({"ok": True, "section": 1}).encode("utf-8"))
+            self.wfile.write(
+                json.dumps(
+                    {"ok": True, "section": 1, "app_version": self.app_version},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
+            return
+        if path == "/version":
+            self._set_headers(200)
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "section": 1,
+                        "app_version": self.app_version,
+                        "module": "section_1_patterns",
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
             return
         if path == "/tasks":
             self._set_headers(200)

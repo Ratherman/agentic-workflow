@@ -18,7 +18,7 @@ BACKEND_PORT = 9000
 
 SECTION_DIRS = {
     0: "section_0_basic_llm",
-    1: "section_1_workflow_patterns",
+    1: "section_1_patterns",
     2: "section_2_tool_calling",
     3: "section_3_workflow_integration",
     4: "section_4_code_execution",
@@ -74,8 +74,8 @@ def start_section_backend(section: int, backend_port: int) -> Optional[subproces
     proc = subprocess.Popen(
         cmd,
         cwd=str(section_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         text=True,
     )
 
@@ -88,13 +88,6 @@ def start_section_backend(section: int, backend_port: int) -> Optional[subproces
             print(output.strip())
         return None
 
-    def stream_backend_logs() -> None:
-        if not proc.stdout:
-            return
-        for line in proc.stdout:
-            print(f"[backend] {line.rstrip()}")
-
-    threading.Thread(target=stream_backend_logs, daemon=True).start()
     return proc
 
 
