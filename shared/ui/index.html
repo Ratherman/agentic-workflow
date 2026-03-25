@@ -1,0 +1,102 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic Workflow UI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Agentic Workflow Engineering</h1>
+      <div class="section-control">
+        <label for="current-section">Current Section</label>
+        <select id="current-section"></select>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="history-panel">
+        <div class="panel-header">
+          <h2>Chats</h2>
+          <button id="new-chat-btn" class="ghost-btn" type="button">+ New</button>
+        </div>
+        <div id="conversation-list" class="conversation-list"></div>
+      </aside>
+
+      <section class="chat-panel">
+        <div class="panel-header">
+          <h2 id="current-chat-title">新聊天室</h2>
+          <span id="chat-section-badge" class="badge">Section 0</span>
+        </div>
+
+        <div id="chat-history" class="chat-history"></div>
+
+        <div class="chat-input-row">
+          <textarea
+            id="chat-input"
+            placeholder="輸入訊息，按 Enter 送出，Shift+Enter 換行"
+            rows="3"
+          ></textarea>
+          <div class="chat-upload-wrap">
+            <input id="chat-image" type="file" accept="image/png,image/jpeg,image/webp" />
+            <small id="chat-image-hint">可選：上傳一張圖片給 LLM 分析</small>
+          </div>
+          <button id="send-btn" type="button">Send</button>
+        </div>
+      </section>
+
+      <aside class="control-panel">
+        <div class="control-stack">
+          <section class="control-section">
+            <div class="panel-header">
+              <h2>Control Panel</h2>
+              <p>設定會即時更新到 config JSON</p>
+            </div>
+
+            <div id="controls-root" class="controls-root"></div>
+          </section>
+
+          <section class="lower-section">
+            <details id="runtime-fold" class="section-card panel-fold">
+              <summary>
+                <span class="section-title">Runtime Config</span>
+                <span class="lock-tag">click to collapse</span>
+              </summary>
+              <div class="section-body runtime-body">
+                <pre id="config-preview"></pre>
+              </div>
+            </details>
+
+            <details id="task-fold" class="section-card panel-fold" open>
+              <summary>
+                <span class="section-title">Task Panel</span>
+                <span class="lock-tag">任務狀態（persistent JSON）</span>
+              </summary>
+              <div class="section-body task-body">
+                <div class="task-create-row">
+                  <input id="task-input" type="text" placeholder="新增任務，例如：準備簡報" />
+                  <button id="add-task-btn" type="button">Add Task</button>
+                </div>
+
+                <div id="task-list" class="task-list"></div>
+              </div>
+            </details>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <template id="section-card-template">
+      <details class="section-card" open>
+        <summary>
+          <span class="section-title"></span>
+          <span class="lock-tag"></span>
+        </summary>
+        <div class="section-body"></div>
+      </details>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
