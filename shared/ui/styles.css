@@ -215,6 +215,43 @@ body {
   grid-template-columns: 1fr auto auto;
   gap: 10px;
   align-items: center;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.chat-input-row.confirm-pending {
+  background: #ece9e0;
+  border-top-color: #cfc6b3;
+}
+
+.chat-input-row.confirm-pending textarea,
+.chat-input-row.confirm-pending input,
+.chat-input-row.confirm-pending button {
+  background: #e2ded3;
+  color: #7a7468;
+  border-color: #cfc6b3;
+}
+
+.chat-input-row.confirm-pending small {
+  color: #8a8478;
+}
+
+.route-confirm-bar {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: #fff8ea;
+}
+
+.route-confirm-bar[hidden] {
+  display: none !important;
+}
+
+.route-confirm-actions {
+  display: flex;
+  gap: 8px;
 }
 
 textarea,

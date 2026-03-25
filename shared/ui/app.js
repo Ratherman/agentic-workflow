@@ -17,6 +17,7 @@ const hasBackend = Boolean(backendUrl);
 const thinkingFrames = ["正在思考.", "正在思考..", "正在思考..."];
 const ALLOWED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_CHAT_PLACEHOLDER = "輸入訊息，按 Enter 送出，Shift+Enter 換行";
 
 let messageIdSeq = 0;
 let conversationIdSeq = 0;
@@ -36,8 +37,9 @@ const state = {
       temperature: 0.3,
     },
     workflow: {
-      enabled: false,
-      mode: "rule",
+      enabled: true,
+      mode: "llm",
+      router_mode: "pydantic",
       routes: [],
     },
     tool: {
@@ -80,6 +82,7 @@ const chatHistory = document.getElementById("chat-history");
 const chatInput = document.getElementById("chat-input");
 const chatImageInput = document.getElementById("chat-image");
 const sendBtn = document.getElementById("send-btn");
+const chatInputRow = document.querySelector(".chat-input-row");
 const sectionTemplate = document.getElementById("section-card-template");
 const conversationList = document.getElementById("conversation-list");
 const newChatBtn = document.getElementById("new-chat-btn");
@@ -89,6 +92,10 @@ const taskInputEl = document.getElementById("task-input");
 const addTaskBtn = document.getElementById("add-task-btn");
 const runtimeFoldEl = document.getElementById("runtime-fold");
 const taskFoldEl = document.getElementById("task-fold");
+const routeConfirmBar = document.getElementById("route-confirm-bar");
+const routeConfirmText = document.getElementById("route-confirm-text");
+const routeYesBtn = document.getElementById("route-yes-btn");
+const routeNoBtn = document.getElementById("route-no-btn");
 
 let pendingImageDataUrl = "";
 let saveTimer = null;
@@ -125,11 +132,14 @@ function init() {
   newChatBtn.addEventListener("click", () => {
     const created = createConversation({ title: "新聊天室", withWelcome: true });
     state.currentConversationId = created.id;
+    routeConfirmBar.hidden = true;
     scheduleSaveState();
     render();
   });
 
   sendBtn.addEventListener("click", sendMessage);
+  routeYesBtn.addEventListener("click", () => submitRouteConfirmation("Yes"));
+  routeNoBtn.addEventListener("click", () => submitRouteConfirmation("No"));
   addTaskBtn.addEventListener("click", handleAddTask);
   taskInputEl.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -247,6 +257,7 @@ function saveStateToStorage() {
     id: conv.id,
     title: conv.title,
     titleManual: Boolean(conv.titleManual),
+    pendingRoute: conv.pendingRoute || null,
     createdAt: conv.createdAt,
     messages: (conv.messages || [])
       .filter((msg) => !msg.thinking && (msg.role === "user" || msg.role === "assistant"))
@@ -322,6 +333,7 @@ function normalizeConversations(rawConversations) {
       title: typeof conv.title === "string" ? conv.title : "新聊天室",
       titleManual: Boolean(conv.titleManual),
       titleGenerating: false,
+      pendingRoute: conv.pendingRoute || null,
       createdAt: Number(conv.createdAt) || Date.now(),
       messages: Array.isArray(conv.messages)
         ? conv.messages
@@ -342,6 +354,7 @@ function createConversation({ title, withWelcome }) {
     title,
     titleManual: false,
     titleGenerating: false,
+    pendingRoute: null,
     messages: withWelcome
       ? [{ role: "assistant", text: "新的聊天室已建立，你可以開始提問。" }]
       : [],
@@ -360,12 +373,16 @@ function getCurrentConversation() {
   return getConversationById(state.currentConversationId);
 }
 
-function sendMessage() {
-  const text = chatInput.value.trim();
+function sendMessage(forcedText = null) {
+  const text = forcedText === null ? chatInput.value.trim() : String(forcedText).trim();
   if (!text && !pendingImageDataUrl) return;
 
   const conversation = getCurrentConversation();
   if (!conversation) return;
+  if (conversation.pendingRoute && forcedText === null) {
+    alert("目前正在等待路由確認，請直接點選 Yes / No 按鈕。");
+    return;
+  }
 
   const userDisplayText = pendingImageDataUrl ? `${text || "(未輸入文字)"}\n[已附加圖片]` : text;
   conversation.messages.push({ role: "user", text: userDisplayText });
@@ -386,6 +403,12 @@ function sendMessage() {
 
   runBackendThinkingReply(text || "請描述這張圖", pendingImageDataUrl, conversation.id);
   pendingImageDataUrl = "";
+}
+
+function submitRouteConfirmation(label) {
+  const conversation = getCurrentConversation();
+  if (!conversation || !conversation.pendingRoute) return;
+  sendMessage(label);
 }
 
 function maybeGenerateConversationTitle(conversationId, seedText) {
@@ -506,6 +529,7 @@ async function runBackendThinkingReply(userText, imageDataUrl, conversationId) {
       config: buildExportedConfig(),
       history: buildConversationHistory(conversationId),
       image_data_url: imageDataUrl || null,
+      router_context: conversation.pendingRoute || null,
     };
 
     const response = await fetch(`${backendUrl}/chat`, {
@@ -526,6 +550,8 @@ async function runBackendThinkingReply(userText, imageDataUrl, conversationId) {
     }
 
     const data = await response.json();
+    conversation.pendingRoute = data.pending_route || null;
+    scheduleSaveState();
     replaceThinkingWithFinal(conversationId, thinkingId, data.reply || "後端未回傳內容。");
   } catch (error) {
     replaceThinkingWithFinal(
@@ -585,6 +611,7 @@ function render() {
   renderControls();
   renderConfigPreview();
   renderChat();
+  renderRouteConfirmBar();
   renderTaskPanel();
 }
 
@@ -592,6 +619,7 @@ function renderIfCurrent(conversationId) {
   if (state.currentConversationId === conversationId) {
     renderChat();
     renderCurrentConversationTitle();
+    renderRouteConfirmBar();
   }
 }
 
@@ -607,6 +635,7 @@ function renderConversations() {
 
     item.addEventListener("click", () => {
       state.currentConversationId = conversation.id;
+      routeConfirmBar.hidden = true;
       scheduleSaveState();
       render();
     });
@@ -746,27 +775,22 @@ function renderLLMControls(container, locked) {
 }
 
 function renderWorkflowControls(container, locked) {
-  container.appendChild(createCheckbox("Enable Routing", state.config.workflow.enabled, (value) => {
-    state.config.workflow.enabled = value;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createRadioGroup("Routing Strategy", "workflow_mode", [
-    ["rule", "Rule-based"],
+  container.appendChild(createRadioGroup("LLM Mode", "workflow_mode", [
     ["llm", "LLM-based (advanced)"],
+    ["rule", "Rule-based"],
   ], state.config.workflow.mode, (value) => {
     state.config.workflow.mode = value;
     renderConfigPreview();
+    renderControls();
   }, locked));
 
-  container.appendChild(createCheckboxList("Available Routes", [
-    ["faq", "FAQ"],
-    ["task", "Task Creation"],
-    ["notify", "Notification"],
-  ], state.config.workflow.routes, (arr) => {
-    state.config.workflow.routes = arr;
+  container.appendChild(createRadioGroup("Structured Mode", "router_mode", [
+    ["prompt_only", "prompt_only"],
+    ["pydantic", "pydantic"],
+  ], state.config.workflow.router_mode || "pydantic", (value) => {
+    state.config.workflow.router_mode = value;
     renderConfigPreview();
-  }, locked));
+  }, locked || state.config.workflow.mode === "rule"));
 }
 
 function renderToolControls(container, locked) {
@@ -1050,9 +1074,10 @@ function buildExportedConfig() {
       temperature: state.config.llm.temperature,
     },
     workflow: {
-      enabled: state.currentSection >= 1 ? state.config.workflow.enabled : false,
+      enabled: state.currentSection >= 1,
       mode: state.config.workflow.mode,
-      routes: state.config.workflow.routes,
+      router_mode: state.config.workflow.router_mode || "pydantic",
+      routes: [],
     },
     tool: {
       enabled: state.currentSection >= 2 ? state.config.tool.enabled : false,
@@ -1220,6 +1245,26 @@ function renderTaskPanel() {
     row.appendChild(source);
     taskListEl.appendChild(row);
   });
+}
+
+function renderRouteConfirmBar() {
+  const conversation = getCurrentConversation();
+  if (!conversation || !conversation.pendingRoute) {
+    routeConfirmBar.hidden = true;
+    chatInputRow?.classList.remove("confirm-pending");
+    chatInput.disabled = false;
+    chatImageInput.disabled = false;
+    sendBtn.disabled = false;
+    chatInput.placeholder = DEFAULT_CHAT_PLACEHOLDER;
+    return;
+  }
+  routeConfirmText.textContent = `是否要執行 ${conversation.pendingRoute.action_type}：${conversation.pendingRoute.target}？`;
+  routeConfirmBar.hidden = false;
+  chatInputRow?.classList.add("confirm-pending");
+  chatInput.disabled = true;
+  chatImageInput.disabled = true;
+  sendBtn.disabled = true;
+  chatInput.placeholder = "請點選 Yes / No 按鈕確認是否執行動作";
 }
 
 function safeParseJson(text) {

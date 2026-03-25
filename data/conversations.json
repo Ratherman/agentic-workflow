@@ -1,9 +1,579 @@
 {
   "conversations": [
     {
+      "id": "conv_6",
+      "title": "多代理協作文章研究",
+      "titleManual": false,
+      "pendingRoute": null,
+      "createdAt": 1774406463042,
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "新的聊天室已建立，你可以開始提問。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做一個 article research，主題是多代理協作"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] article_research\nReason: 規則命中：文章研究流程關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `article_research` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 規則命中：行事曆查詢流程關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請解釋一下什麼是 RAG"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 未命中規則，改走一般 LLM 回答\n\nRAG 是 **Retrieval-Augmented Generation**（檢索增強生成）的縮寫。它的核心概念是：讓生成式 AI 在回答問題時，先去「外部資料庫/文件」找相關內容，再把找到的資訊一起用來生成答案，而不是只靠模型記憶直接硬猜。\n\n**怎麼運作（簡化流程）**：\n1. **檢索（Retrieval）**：根據你的問題，從資料庫（例如文件、知識庫、網頁摘要、PDF 等）找出最相關的片段。\n2. **增強（Augmented）**：把這些片段當作「參考依據」提供給模型。\n3. **生成（Generation）**：模型在參考片段的基礎上生成回答。\n\n**為什麼要用 RAG**：\n- **降低幻覺**：答案更有依據，較不容易憑空捏造。\n- **可用最新資料**：資料庫更新後，模型就能引用新內容。\n- **可客製知識**：把你自己的文件/規範接進來，讓回答更貼近你的情境。\n\n如果你願意，我也可以用一個具體例子（例如問公司制度、問論文摘要）來示範 RAG 的輸入輸出會長什麼樣子。"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 我將為你建立任務：明天下午 3 點交報告。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 你想確認本週五是否有會議，我需要查你的行事曆。 (auto-corrected from action_type)\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 你想確認本週五是否有會議，我需要查你的行事曆。 (auto-corrected from action_type)\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 我需要查你的行事曆，確認你這週五是否有會議。 (auto-corrected from action_type)\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請解釋一下什麼是 RAG"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 使用者想了解 RAG 的概念，直接用文字說明即可。\n\nRAG 是 **Retrieval-Augmented Generation** 的縮寫，意思是「**檢索增強生成**」。\n\n簡單說，它把 AI 的回答流程拆成兩步：\n\n1) **先去找資料（Retrieval）**  \n   從你提供或系統內的文件庫/知識庫中，找出跟問題最相關的內容（例如文件段落、FAQ、網頁摘要等）。\n\n2) **再用找到的資料來回答（Generation）**  \n   AI 不是只靠自己訓練時學到的知識，而是把「檢索到的內容」一起餵給模型，讓回答更貼近事實、也更能引用特定來源。\n\n✅ 主要好處  \n- **降低胡說風險**：因為有外部資料可依據  \n- **回答更符合你的資料**：例如公司內文件、特定規格、最新公告  \n- **可做引用/追溯**：通常能標示資料來源\n\n如果你願意，我也可以用一個生活化例子（像查公司規定或行事曆）來比喻 RAG。"
+        }
+      ]
+    },
+    {
+      "id": "conv_5",
+      "title": "中嘉Eric聊天頻道",
+      "titleManual": false,
+      "pendingRoute": null,
+      "createdAt": 1774406010387,
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "新的聊天室已建立，你可以開始提問。"
+        },
+        {
+          "role": "user",
+          "text": "我是中嘉也是 Eric"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 你好！我是中嘉（Eric）。请告诉我你想做什么或需要我帮你处理的具体问题。\n\n你好！很高興認識你～我是這邊的 AI 助手。  \n你說你是中嘉、也是 Eric，想跟我聊什麼呢？😊"
+        },
+        {
+          "role": "user",
+          "text": "我有沒有養寵物阿"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 我需要先了解你的情況：你目前有沒有養寵物？請告訴我你有/沒有，以及是什麼類型的寵物。\n\n我自己沒有養寵物喔，因為我是 AI，沒有實體生活。😄  \n但我可以幫你聊聊你有沒有養寵物、或想養什麼！\n\n你現在有養寵物嗎？是貓、狗，還是其他呢？🐶🐱"
+        },
+        {
+          "role": "user",
+          "text": "Eric 有養寵物嗎"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 使用者詢問「Eric 有養寵物嗎」，需要先釐清是指哪位 Eric，且需依可用資訊回答；目前無足夠上下文，先用對話詢問/推斷。\n\n有，Eric 有養一隻貓咪，名字叫「咪嚕」。🐱  \n(Reference: QA #11)"
+        },
+        {
+          "role": "user",
+          "text": "SLA 時間多長"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 請問你指的是哪個系統/服務的 SLA？不同服務的 SLA 時間可能不同；請提供服務名稱或合約/文件來源，我才能回答。\n\n你問的「SLA 時間」是指哪一種服務/項目呢？例如：\n\n1) 客服回覆時間（First response）  \n2) 問題排除/修復時間（Resolution）  \n3) 服務啟用/交付時間  \n4) 你們內部的工單 SLA（不同等級：P1/P2/P3）\n\n請你告訴我：**服務名稱 + SLA 等級（若有）+ 你要的是回覆還是修復**，我才能精準回答。"
+        },
+        {
+          "role": "user",
+          "text": "公出交通工具有什麼原則？"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 使用者詢問公出交通工具的原則，需提供一般性規範與建議，無需外部工具或排程查詢。\n\n公出時選擇交通工具的原則是：**優先使用大眾運輸**；如果確實需要搭乘**計程車**，就要**提供搭乘原因**。🚍🚕  \n(Reference: QA #10)"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 規則命中：行事曆查詢流程關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: prompt_only parse failed: 1 validation error for RouteDecision\naction_type\n  Input should be 'tool', 'workflow' or 'llm' [type=literal_error, input_value='calendar_query', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/literal_error\n\n我可以幫你查，但我目前**沒有你的行事曆資料/存取權限**，因此無法直接確認你「這週五」是否有會議。📅\n\n請你提供其中一項資訊，我就能繼續幫你判斷：\n1) 你使用的行事曆系統（Google / Outlook / 其他）以及是否能授權我讀取  \n2) 你「這週五」的日期（例如：2026/03/27）  \n3) 或直接貼上你行事曆中該天的會議清單/截圖（我可幫你整理）\n\n另外也想確認：你說的「這週五」是以**你所在時區**為準嗎？"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: prompt_only parse failed: 1 validation error for RouteDecision\naction_type\n  Input should be 'tool', 'workflow' or 'llm' [type=literal_error, input_value='calendar_query', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/literal_error\n\n我可以幫你查，但我目前**無法直接存取你的行事曆**，所以需要你提供資料或授權。\n\n請你回覆其中一種方式即可：\n1) **告訴我「這週五」的日期**（例如：2026/03/27）+ 你用的行事曆（Google/Outlook/其他）  \n2) **貼上/截圖**你行事曆中「週五」那一天的行程（我會幫你判斷是否有會議）  \n3) 若你有可用的**行事曆授權/整合**，告訴我你要用哪個帳號或系統\n\n你先回我：**這週五是幾月幾日？** 📅"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: pydantic parse failed: 1 validation error for RouteDecision\naction_type\n  Input should be 'tool', 'workflow' or 'llm' [type=literal_error, input_value='calendar_query', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/literal_error\n\n我可以幫你查，但我目前**沒有你的行事曆內容/存取權限**，因此無法直接確認你「這週五」是否有會議。📅\n\n請你先補其中一項資訊：\n1) **這週五的日期**（例如：2026/03/27）+ 你用的行事曆（Google/Outlook/其他）  \n或  \n2) 直接**貼上/截圖**你行事曆中那天的行程（我會幫你看有沒有會議）\n\n另外也確認一下：你說的「這週五」是以**你目前所在時區**為準嗎？"
+        },
+        {
+          "role": "user",
+          "text": "請解釋一下什麼是 RAG"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 使用者想了解 RAG 的概念，直接用文字說明即可。\n\nRAG 是 **Retrieval-Augmented Generation**（檢索增強生成）的縮寫。\n\n簡單說，它把「查資料」和「生成答案」結合起來：\n\n1) **Retrieval（檢索）**：先去你提供/連到的資料庫、文件、知識庫裡找出跟問題最相關的內容（例如文件段落、條款、FAQ）。\n2) **Augmented（增強）**：把找到的內容餵給模型，讓模型在回答時有「依據」。\n3) **Generation（生成）**：模型再根據這些檢索到的內容，生成更貼近事實、較不容易胡猜的答案。\n\n✅ 主要優點  \n- 回答更**貼近你的資料**（而不是只靠模型記憶）  \n- 通常能**降低幻覺**（胡亂編造）  \n- 可用於企業文件、規範、客服知識庫等情境\n\n如果你願意，我也可以用一個你常見的例子（例如公司制度、產品文件）示範 RAG 的流程。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查行事曆，看看我這週五有沒有會議"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: pydantic parse failed: 1 validation error for RouteDecision\naction_type\n  Input should be 'tool', 'workflow' or 'llm' [type=literal_error, input_value='calendar_query', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/literal_error\n\n我可以幫你查，但我目前**無法直接存取你的行事曆**，所以需要你提供「週五」的日期或把行程貼給我。\n\n請你回覆其中一種就好：  \n1) **這週五是幾月幾日**（例如 2026/03/27）+ 你用的行事曆（Google/Outlook/其他）  \n或  \n2) 直接**貼上/截圖**你行事曆中那天的行程清單（我會幫你判斷是否有會議）\n\n另外也確認一下：你說的「這週五」是以**你所在時區**為準嗎？ 📅"
+        }
+      ]
+    },
+    {
+      "id": "conv_4",
+      "title": "OpenAI Function Calling",
+      "titleManual": false,
+      "pendingRoute": null,
+      "createdAt": 1774400955549,
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "新的聊天室已建立，你可以開始提問。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我搜尋網路：OpenAI function calling best practices"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] search_web\nReason: 使用者要搜尋網路「OpenAI function calling best practices」，需要先進行網路搜尋彙整相關最佳實務建議。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `search_web` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做文章研究，主題是企業導入 Agent 的風險"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: prompt_only parse failed: Expecting value: line 1 column 1 (char 0)\n\n以下提供一份「企業導入 Agent 的風險」文章研究架構與可直接撰寫的內容要點（你可以依篇幅取捨）。我會用偏研究/分析的方式整理：先定義 Agent，再拆風險類型、影響、常見情境、緩解策略與評估指標。\n\n---\n\n## 1. 研究背景與問題定義\n近年企業導入「Agent」系統（能在目標導向下規劃步驟、呼叫工具、跨任務迭代的自動化智能）常見於客服、IT 運維、銷售助理、內部知識查詢、流程自動化等場景。  \n但 Agent 的特性（自主性、工具使用、可連續執行、可能跨系統）使其風險不只是「模型輸出錯誤」，而是可能擴大成**流程層級、資安層級、法遵層級**的連鎖後果。\n\n**研究問題可寫成：**  \n> 企業導入 Agent 時，主要風險有哪些？其成因、影響範圍與緩解策略如何設計？如何衡量風險是否被有效控制？\n\n---\n\n## 2. 風險分類總覽（建議文章主軸）\n可用「技術風險 / 資安與濫用 / 法遵與治理 / 業務與流程 / 人因與組織 / 供應鏈與運維」六大類來寫，讀者也容易吸收。\n\n### A. 技術與可靠性風險\n1. **幻覺與錯誤決策**\n   - Agent 可能產生看似合理但錯誤的結論，並進一步採取行動（例如發送錯誤指令、錯誤更新工單）。\n   - 風險不只「答錯」，而是「答錯 + 自動執行」造成實質損失。\n\n2. **任務規劃失敗與錯誤迭代**\n   - Agent 會多步驟嘗試；若缺乏停止條件或評估機制，可能反覆嘗試造成資源耗用或造成更大損害。\n\n3. **工具/介面使用不當**\n   - 工具參數錯誤、權限不足導致重試風暴、或誤用 API 造成資料錯寫。\n\n4. **狀態管理與記憶錯置**\n   - 若 Agent 依賴上下文或外部記憶，可能把不同客戶/不同案件的資訊混在一起。\n\n**文章可強調：** Agent 的「自主性」會把小錯誤放大成系統性事件。\n\n---\n\n### B. 資安與濫用風險（通常是最重要章節）\n1. **提示注入（Prompt Injection）與越權行為**\n   - 攻擊者透過文件、網頁、客服對話等內容誘導 Agent 忽略規則、洩露機密或執行不該做的動作。\n   - 這類攻擊常見於「Agent 會讀取外部內容並據以決策」的場景。\n\n2. **資料外洩（Data Leakage）**\n   - Agent 可能把內部敏感資訊（合約、客戶資料、憑證、內部文件）在回覆中不當呈現。\n   - 或在工具呼叫過程中把敏感欄位帶出到外部系統。\n\n3. **憑證/金鑰暴露與濫用**\n   - 若 Agent 能呼叫工具，常需要 API key / OAuth token。  \n   - 設計不當可能導致憑證被模型「推導」或被惡意提示誘導使用在非授權用途。\n\n4. **橫向移動與攻擊面擴大**\n   - Agent 若具備多系統存取能力，攻擊者可利用其工具鏈造成橫向擴散（例如從查詢權限變成寫入權限）。\n\n5. **拒絕服務（DoS）與資源耗盡**\n   - 無限制的重試、長鏈路工具呼叫、或大量並發可能造成成本飆升或系統不穩。\n\n---\n\n### C. 法遵、隱私與合規風險\n1. **個資與敏感資料處理不當**\n   - Agent 若處理個資（PII）、醫療/金融/未公開資訊，可能違反隱私法規或內部保密規範。\n   - 也可能因資料留存、日誌記錄、向第三方傳輸而引發合規問題。\n\n2. **版權與內容授權**\n   - Agent 可能引用或改寫受版權保護內容，或在未授權情況下使用資料來源。\n\n3. **可解釋性與稽核不足**\n   - 法遵常要求「為何做出該決策」與「誰在何時做了什麼」。  \n   - Agent 的推理過程若不可追溯，會增加稽核難度。\n\n4. **跨境資料傳輸**\n   - 若使用雲端模型或外部 API，資料可能跨境，需符合相關規範。\n\n---\n\n### D. 業務與流程風險\n1. **自動化錯誤造成直接損失**\n   - 例如自動下單、退款、發送合約、變更權限、關閉服務等，一旦錯誤就可能是高成本事件。\n\n2. **責任歸屬與流程責任不清**\n   - Agent 做了決策但人員未能有效監督，發生事故時難以界定責任。\n\n3. **服務品質與客訴風險**\n   - Agent 若在客服或銷售流程中提供錯誤承諾，會引發合約/承諾風險與客訴。\n\n4. **依賴性與流程退化**\n   - 團隊過度依賴 Agent，導致人工判斷能力下降；一旦系統故障，業務韌性不足。\n\n---\n\n### E. 人因與組織風險\n1. **人機協作失衡**\n   - 若缺乏清楚的「何時需要人工審核」，Agent 可能在高風險步驟仍自動執行。\n\n2. **訓練不足與誤用**\n   - 使用者不理解 Agent 的限制，或錯誤設定任務目標，導致不可預期結果。\n\n3. **組織治理不足**\n   - 缺乏風險評估流程、變更管理、模型/工具更新的審查機制。\n\n---\n\n### F. 供應鏈與運維風險\n1. **模型/供應商變更造成行為漂移**\n   - 模型版本更新、工具 API 變更、權限策略調整，都可能讓 Agent 行為改變。\n\n2. **第三方工具與資料流風險**\n   - Agent 若依賴多個第三方服務，任何一方的安全或可用性問題都會傳導。\n\n3. **監控不足與事件回應慢**\n   - 若沒有即時監控、告警、回滾機制，事故擴大速度會很快。\n\n---\n\n## 3. 風險成因模型（可寫成研究框架）\n你可以用「輸入—推理—工具—輸出—回饋」五段式來描述風險如何發生：\n\n- **輸入層**：外部內容被注入、資料品質差、提示不完整  \n- **推理層**：幻覺、錯誤規劃、缺乏停止條件  \n- **工具層**：權限過大、參數錯誤、重試策略不當  \n- **輸出層**：敏感資訊外洩、錯誤承諾  \n- **回饋層**：人員未監督、評估機制失效、策略未更新\n\n這樣寫會讓文章更像「研究」，而不是單純列清單。\n\n---\n\n## 4. 緩解策略（建議對應每類風險）\n以下提供可直接放入文章的「對策」方向（你可挑重點寫）：\n\n### 技術可靠性\n- **任務分級與風險閾值**：低風險自動，高風險必須人工審核（human-in-the-loop）。\n- **工具呼叫防呆**：參數 schema 驗證、白名單操作、限制寫入範圍。\n- **停止條件與評估器**：加入自我檢查/外部評分器，避免無限迭代。\n- **狀態與記憶隔離**：確保不同客戶/案件的上下文不混用。\n\n### 資安\n- **最小權限（Least Privilege）**：Agent 只拿到完成任務所需的最小權限。\n- **輸入內容防注入**：對外部內容做隔離、標記可信來源、採用安全提示策略。\n- **敏感資料遮罩與分類**：在輸出前做 DLP（資料外洩防護）與遮罩。\n- **憑證保護**：憑證不進入模型上下文；工具層由安全閘道代為呼叫。\n- **審計與追蹤**：記錄工具呼叫、參數、決策依據（可稽核）。\n\n### 法遵治理\n- **資料最小化**：只傳必要欄位給模型/第三方。\n- **保留政策與日誌控管**：敏感內容日誌加密、縮短保留期、存取控管。\n- **可解釋性與稽核報表**：保留決策鏈與版本資訊（模型/提示/工具版本）。\n- **合規審查流程**：上線前做風險評估與法務/資安審核。\n\n### 業務流程\n- **人機協作 SOP**：明確規定哪些步驟必須人工確認。\n- **回滾與保護機制**：高風險操作採「預覽/草稿/雙重確認」。\n- **品質監控與抽樣審查**：定期抽查輸出與工具執行結果。\n\n### 運維與供應鏈\n- **版本控管與變更管理**：模型/提示/工具更新需走審核與測試。\n- **監控告警與事件演練**：建立事故分級、告警閾值、回應流程。\n- **紅隊測試**：針對提示注入、越權、資料外洩做攻防演練。\n\n---\n\n## 5. 風險評估與指標（讓文章更具研究性）\n你可以在文末加入「如何衡量風險」的章節，常見指標包括：\n\n- **安全指標**：敏感資訊外洩事件數、越權嘗試次數、工具寫入錯誤率  \n- **可靠性指標**：任務成功率、平均迭代步數、停止條件觸發率  \n- **合規指標**：個資處理合規命中率、稽核可追溯覆蓋率（是否能重建決策鏈）  \n- **成本/效能**：平均工具呼叫次數、重試率、平均延遲  \n- **品質指標**：人工審核通過率、客訴率、錯誤承諾率\n\n並可建議建立「風險矩陣」（發生機率 × 影響程度）來決定控制強度。\n\n---\n\n## 6. 建議文章結構（可直接當目錄）\n1. 引言：為何 Agent 會帶來新型風險  \n2. Agent 定義與企業導入典型場景  \n3. 風險分類（技術/資安/法遵/業務/人因/供應鏈）  \n4. 風險成因模型（輸入—推理—工具—輸出—回饋）  \n5. 緩解策略與控制設計（對應每類風險）  \n6. 風險評估方法與指標  \n7. 結論：導入原則與治理建議\n\n---\n\n## 7. 你可以補充的資訊（我能幫你把文章寫得更貼近）\n為了讓文章更符合你的需求，請回覆以下任一項即可：\n1) 文章目標讀者：CISO/IT/法務/一般管理層？  \n2) 你想聚焦的 Agent 場景：客服、IT 運維、銷售、內部流程自動化、程式碼/DevOps？  \n3) 文章長度：例如 1500/3000/5000 字？  \n4) 你希望偏「論文式」還是「白皮書式」？\n\n你回覆後，我可以把以上內容整理成一篇完整可投稿/可交付的文章草稿（含摘要、關鍵字、章節與結論）。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我搜尋網路：OpenAI function calling best practices"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: prompt_only parse failed: Expecting value: line 1 column 1 (char 0)\n\n我可以幫你整理「OpenAI function calling（工具/函數呼叫）」的最佳實務重點與可用的檢索關鍵字，但我目前無法直接替你即時上網搜尋並回傳網頁內容。\n\n下面先給你一份常見且實用的 best practices 清單（你也可以把這些關鍵字拿去搜尋）：\n\n## OpenAI function calling 最佳實務重點\n1. **明確定義工具（function/tool）**\n   - 用清楚的 `name`、`description` 說明工具用途。\n   - `parameters` 的 schema 盡量精準（型別、必要欄位、限制條件）。\n\n2. **讓模型只在需要時呼叫**\n   - 在系統/開發訊息中規範：何時必須呼叫工具、何時直接回答。\n   - 避免讓模型「每次都呼叫」造成不必要的成本與延遲。\n\n3. **嚴格處理輸入輸出（schema 驅動）**\n   - 盡量要求模型輸出符合 schema 的參數。\n   - 對於可能的型別錯誤（例如數字/字串混用），在後端做驗證與修正策略。\n\n4. **在後端驗證與容錯**\n   - 工具執行前做參數驗證（JSON schema 驗證或自訂檢查）。\n   - 若參數不合法：回傳錯誤訊息給模型，讓它修正後重試（而不是直接失敗）。\n\n5. **工具回傳結果要“可被模型消化”**\n   - 回傳精簡、結構化資料（例如 JSON），避免冗長文字。\n   - 若工具可能失敗，回傳可理解的錯誤碼/訊息與建議。\n\n6. **避免把敏感資訊直接交給模型**\n   - API key、內部憑證等不要放進模型上下文。\n   - 工具層在後端處理敏感資訊，模型只拿到必要結果。\n\n7. **設計可觀測性（logging/trace）**\n   - 記錄：何時觸發工具呼叫、呼叫的參數、工具回傳內容、最終回答。\n   - 方便除錯與評估（尤其是參數不符合 schema 的情況）。\n\n8. **處理多步工具呼叫**\n   - 允許模型連續呼叫多個工具（例如先查資料再計算再查狀態）。\n   - 但要限制最大步數，避免無限迴圈。\n\n9. **對模型輸出做安全策略**\n   - 即使工具呼叫參數由模型生成，也要在後端做白名單/範圍限制。\n   - 對於可能造成風險的操作（下單、刪除、發送訊息），加上確認流程或權限檢查。\n\n10. **測試與評估**\n   - 用一組代表性問題測試：正常、邊界、缺參數、歧義、工具失敗等。\n   - 觀察：呼叫率是否合理、參數是否穩定、錯誤修正是否有效。\n\n---\n\n## 建議你用這些關鍵字去搜尋\n你可以直接貼到 Google/Bing：\n- `OpenAI function calling best practices`\n- `OpenAI tools function calling schema validation`\n- `function calling retry on invalid arguments`\n- `structured outputs tool calling`\n- `OpenAI tool calling multi-step workflow`\n- `OpenAI function calling security best practices`\n\n---\n\n如果你告訴我你使用的語言/框架（例如 Python/Node.js、以及你用的是 Responses API 還是 Chat Completions），我也可以把上述最佳實務改寫成更貼近你情境的範例架構與注意事項。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我搜尋網路：OpenAI function calling best practices"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] search_web\nReason: 使用者要搜尋網路「OpenAI function calling best practices」，需要先進行網路搜尋彙整相關最佳實務建議。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `search_web` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我查一下這週的會議行程"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] calendar_query\nReason: 你想查這週的會議行程，我需要先查你的日曆/排程資料。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `calendar_query` 將於 Section 3 實作。"
+        }
+      ]
+    },
+    {
+      "id": "conv_3",
+      "title": "2026 AI代理最新趨勢",
+      "titleManual": false,
+      "pendingRoute": null,
+      "createdAt": 1774400331215,
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "新的聊天室已建立，你可以開始提問。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我上網查一下 2026 AI agent 最新趨勢"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] search_web\nReason: 規則命中：網路搜尋相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `search_web` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做一個 article research，主題是多代理協作"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] article_research\nReason: 規則命中：文章研究流程關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `article_research` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請解釋一下什麼是 RAG"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 未命中規則，改走一般 LLM 回答\n\nRAG 是 **Retrieval-Augmented Generation**，中文常翻成**檢索增強生成**。\n\n簡單說，它是一種讓大型語言模型在回答問題前，**先去找相關資料，再根據找到的內容生成答案**的方法。\n\n### 你可以把它想成兩個步驟\n1. **Retrieval（檢索）**  \n   先從資料庫、文件、知識庫、網頁或內部文件中找出和問題最相關的內容。\n\n2. **Generation（生成）**  \n   把找到的內容連同使用者問題一起交給語言模型，讓模型根據這些資料來回答。\n\n---\n\n### 為什麼需要 RAG？\n一般語言模型有幾個限制：\n- 知識可能不是最新的\n- 容易產生「幻覺」，也就是一本正經地說錯話\n- 不知道企業內部文件或私有資料\n\nRAG 的好處就是：\n- **答案更貼近真實資料**\n- **可以引用最新內容**\n- **能結合公司內部知識庫**\n- **降低模型亂答的機率**\n\n---\n\n### 舉個例子\n假設你問：\n\n> 「我們公司 2024 年的請假制度是什麼？」\n\n如果只有一般模型，它可能只能根據常識回答。  \n但如果用了 RAG，系統會先去公司的人資文件中找出「2024 請假制度」相關段落，再根據那份文件整理成答案。\n\n所以回答會更準，也更符合你的實際情境。\n\n---\n\n### RAG 的典型流程\n常見流程大概是：\n\n- 使用者提出問題\n- 系統把問題轉成可搜尋的形式\n- 到知識庫中檢索相關文件片段\n- 把這些片段放進 prompt\n- 語言模型根據片段生成答案\n- 有時還會附上來源或引用\n\n---\n\n### RAG 和微調（Fine-tuning）有什麼不同？\n很多人會把這兩個搞混：\n\n- **RAG**：不一定要改模型本身，而是靠「外部資料檢索」來補充知識\n- **Fine-tuning**：直接把模型訓練成更適合某個任務或風格\n\n簡單理解：\n- 想讓模型**知道最新資料** → RAG 比較適合\n- 想讓模型**改變說話方式或任務能力** → 微調比較適合\n\n---\n\n### 一句話總結\n**RAG 就是讓 AI 在回答前先查資料，再根據資料作答。**\n\n如果你願意，我也可以接著用「技術架構圖的角度」或「白話比喻」再解釋一次。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我安排一個任務：下週一提醒我寄出合約"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 需要建立提醒任務，於下週一提醒你寄出合約。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我安排一個任務：下週一提醒我寄出合約"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 需要建立提醒任務，於下週一提醒你寄出合約。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我安排一個任務：下週一提醒我寄出合約"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 需要建立提醒任務，於下週一提醒你寄出合約。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做文章研究，主題是企業導入 Agent 的風險"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] article_research\nReason: 你要我進行文章研究，主題是企業導入 Agent 的風險。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `article_research` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做文章研究，主題是企業導入 Agent 的風險"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] article_research\nReason: 需要進行文章研究，主題為企業導入 Agent 的風險。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `article_research` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我做文章研究，主題是企業導入 Agent 的風險"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → WORKFLOW] article_research\nReason: 使用者要進行「文章研究」，主題為企業導入 Agent 的風險。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Workflow `article_research` 將於 Section 3 實作。"
+        },
+        {
+          "role": "user",
+          "text": "請幫我搜尋網路：OpenAI function calling best practices"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] search_web\nReason: 使用者要搜尋網路「OpenAI function calling best practices」，需要先進行網路搜尋彙整相關最佳實務建議。\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `search_web` 將於 Section 2 實作。"
+        }
+      ]
+    },
+    {
+      "id": "conv_2",
+      "title": "建立明天下午三點交報告任務",
+      "titleManual": false,
+      "pendingRoute": null,
+      "createdAt": 1774400007241,
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "新的聊天室已建立，你可以開始提問。"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 規則命中：任務建立相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "YES"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 規則命中：任務建立相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Y"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 規則命中：任務建立相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "要"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 規則命中：任務建立相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "NONO"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → LLM]\nReason: 未命中規則，改走一般 LLM 回答\n\n你好！請問你想問什麼？"
+        },
+        {
+          "role": "user",
+          "text": "幫我建立任務：明天下午 3 點交報告"
+        },
+        {
+          "role": "assistant",
+          "text": "[Router → TOOL] create_task\nReason: 規則命中：任務建立相關關鍵字\n\n是否要執行這個動作？（Yes / No）"
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "assistant",
+          "text": "你選擇 Yes。Tool `create_task` 將於 Section 2 實作。"
+        }
+      ]
+    },
+    {
       "id": "conv_1",
       "title": "歡迎加入中嘉聊天室",
       "titleManual": false,
+      "pendingRoute": null,
       "createdAt": 1774397988008,
       "messages": [
         {
@@ -101,5 +671,5 @@
       ]
     }
   ],
-  "currentConversationId": "conv_1"
+  "currentConversationId": "conv_6"
 }
