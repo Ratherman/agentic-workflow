@@ -201,6 +201,17 @@ body {
   text-decoration: underline;
 }
 
+.msg-content img {
+  display: block;
+  max-width: min(100%, 560px);
+  width: auto;
+  height: auto;
+  border: 1px solid #dfd7c6;
+  border-radius: 10px;
+  margin: 8px 0;
+  background: #fff;
+}
+
 .msg-content code {
   font-family: "Consolas", "Courier New", monospace;
   background: #f1efe9;

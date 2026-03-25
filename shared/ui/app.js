@@ -16,8 +16,10 @@ const backendUrl = params.get("backend_url") || "";
 const hasBackend = Boolean(backendUrl);
 const thinkingFrames = ["正在思考.", "正在思考..", "正在思考..."];
 const ALLOWED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+const ALLOWED_DATA_EXT = new Set(["csv", "xlsx"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_CHAT_PLACEHOLDER = "輸入訊息，按 Enter 送出，Shift+Enter 換行";
+const DEFAULT_CODE_LIBRARIES = ["pandas", "matplotlib", "numpy"];
 
 let messageIdSeq = 0;
 let conversationIdSeq = 0;
@@ -55,8 +57,7 @@ const state = {
     },
     code_execution: {
       enabled: false,
-      mode: "safe",
-      libraries: [],
+      libraries: [...DEFAULT_CODE_LIBRARIES],
       auto_run: false,
     },
     security: {
@@ -73,6 +74,9 @@ const state = {
       cost_control: false,
     },
   },
+  runtime_env: {
+    supported_libraries: [],
+  },
 };
 
 const sectionSelect = document.getElementById("current-section");
@@ -82,6 +86,7 @@ const configPreview = document.getElementById("config-preview");
 const chatHistory = document.getElementById("chat-history");
 const chatInput = document.getElementById("chat-input");
 const chatImageInput = document.getElementById("chat-image");
+const chatImageHint = document.getElementById("chat-image-hint");
 const sendBtn = document.getElementById("send-btn");
 const chatInputRow = document.querySelector(".chat-input-row");
 const sectionTemplate = document.getElementById("section-card-template");
@@ -100,12 +105,25 @@ const routeYesBtn = document.getElementById("route-yes-btn");
 const routeNoBtn = document.getElementById("route-no-btn");
 
 let pendingImageDataUrl = "";
+let pendingUploadedFile = null;
 let saveTimer = null;
 let taskEditingId = null;
 let taskEditingDraft = "";
 let conversationMenuId = null;
 let conversationEditingId = null;
 let conversationEditingDraft = "";
+
+function isCodeExecMemoryEnforced() {
+  return Boolean(state.config?.code_execution?.enabled);
+}
+
+function enforceCodeExecMemoryPolicy() {
+  if (!isCodeExecMemoryEnforced()) return;
+  state.config.llm.memory = true;
+  const rounds = Number(state.config.llm.memory_rounds || 4);
+  state.config.llm.memory_rounds = Math.max(4, rounds);
+  state.config.code_execution.libraries = [...DEFAULT_CODE_LIBRARIES];
+}
 
 function init() {
   for (let i = 0; i <= maxSection; i += 1) {
@@ -160,21 +178,57 @@ function init() {
     const [file] = event.target.files || [];
     if (!file) {
       pendingImageDataUrl = "";
+      pendingUploadedFile = null;
+      if (chatImageHint) chatImageHint.textContent = "可選：上傳圖片或 xlsx/csv 供分析";
       return;
     }
-    if (!ALLOWED_IMAGE_MIME.has(file.type)) {
-      pendingImageDataUrl = "";
-      chatImageInput.value = "";
-      alert("目前只支援 PNG / JPEG / WebP。請先轉檔再上傳。");
+
+    const ext = String(file.name.split(".").pop() || "").toLowerCase();
+    const isImage = ALLOWED_IMAGE_MIME.has(file.type);
+    const isDataFile = ALLOWED_DATA_EXT.has(ext);
+
+    if (isImage) {
+      if (file.size > MAX_IMAGE_BYTES) {
+        pendingImageDataUrl = "";
+        pendingUploadedFile = null;
+        chatImageInput.value = "";
+        alert("圖片太大，請上傳 8MB 以下圖片。");
+        return;
+      }
+      pendingImageDataUrl = await fileToDataUrl(file);
+      pendingUploadedFile = null;
+      if (chatImageHint) chatImageHint.textContent = `已附加圖片：${file.name}`;
       return;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
-      pendingImageDataUrl = "";
-      chatImageInput.value = "";
-      alert("圖片太大，請上傳 8MB 以下圖片。");
+
+    if (isDataFile) {
+      if (!hasBackend) {
+        chatImageInput.value = "";
+        alert("目前未啟動後端，無法上傳資料檔。");
+        return;
+      }
+      if (state.currentSection < 4) {
+        chatImageInput.value = "";
+        alert("資料檔分析請在 Section 4 使用。");
+        return;
+      }
+      try {
+        pendingUploadedFile = await uploadDataFileToBackend(file);
+        pendingImageDataUrl = "";
+        if (chatImageHint) chatImageHint.textContent = `已上傳資料檔：${pendingUploadedFile.name}`;
+      } catch (error) {
+        pendingUploadedFile = null;
+        pendingImageDataUrl = "";
+        chatImageInput.value = "";
+        alert(`資料檔上傳失敗：${String(error)}`);
+      }
       return;
     }
-    pendingImageDataUrl = await fileToDataUrl(file);
+
+    pendingImageDataUrl = "";
+    pendingUploadedFile = null;
+    chatImageInput.value = "";
+    alert("目前支援：PNG/JPEG/WebP 圖片，或 CSV/XLSX 資料檔。");
   });
 
   chatInput.addEventListener("keydown", (event) => {
@@ -215,8 +269,23 @@ function init() {
   });
 
   render();
+  loadRuntimeEnvironmentInfo();
   loadConversationsFromBackend();
   loadTasksFromBackend();
+}
+
+async function loadRuntimeEnvironmentInfo() {
+  if (!hasBackend) return;
+  try {
+    const response = await fetch(`${backendUrl}/health`);
+    if (!response.ok) return;
+    const payload = await response.json();
+    const libs = Array.isArray(payload.supported_libraries) ? payload.supported_libraries : [];
+    state.runtime_env.supported_libraries = libs.map((item) => String(item));
+    renderControls();
+  } catch (_error) {
+    // Ignore probing errors.
+  }
 }
 
 function recalculateIdCounters() {
@@ -270,6 +339,9 @@ function loadStateFromStorage() {
       state.config.webhook.workflows = ["calendar_query"];
       state.config.webhook.mode = state.config.webhook.mode === "auto" ? "auto" : "manual";
       state.config.code_execution = { ...state.config.code_execution, ...(saved.config.code_execution || {}) };
+      if (!Array.isArray(state.config.code_execution.libraries) || state.config.code_execution.libraries.length === 0) {
+        state.config.code_execution.libraries = [...DEFAULT_CODE_LIBRARIES];
+      }
       state.config.security = { ...state.config.security, ...(saved.config.security || {}) };
       state.config.production = { ...state.config.production, ...(saved.config.production || {}) };
     }
@@ -414,26 +486,36 @@ function getCurrentConversation() {
   return getConversationById(state.currentConversationId);
 }
 
+function isConfirmPendingRoute(pending) {
+  if (!pending || typeof pending !== "object") return false;
+  const stage = String(pending.stage || "");
+  // Only confirmation stages should lock free-text input.
+  return stage.startsWith("confirm_");
+}
+
 function sendMessage(forcedText = null) {
   const text = forcedText === null ? chatInput.value.trim() : String(forcedText).trim();
-  if (!text && !pendingImageDataUrl) return;
+  if (!text && !pendingImageDataUrl && !pendingUploadedFile) return;
 
   const conversation = getCurrentConversation();
   if (!conversation) return;
   const pending = conversation.pendingRoute || null;
-  const shouldLockInput = pending && pending.stage !== "collect_datetime";
+  const shouldLockInput = isConfirmPendingRoute(pending);
   if (shouldLockInput && forcedText === null) {
     alert("目前正在等待路由確認，請直接點選 Yes / No 按鈕。");
     return;
   }
 
-  const userDisplayText = pendingImageDataUrl ? `${text || "(未輸入文字)"}\n[已附加圖片]` : text;
+  let userDisplayText = text;
+  if (pendingImageDataUrl) userDisplayText = `${text || "(未輸入文字)"}\n[已附加圖片]`;
+  if (pendingUploadedFile) userDisplayText = `${text || "(未輸入文字)"}\n[已附加資料檔：${pendingUploadedFile.name}]`;
   conversation.messages.push({ role: "user", text: userDisplayText });
   bumpConversation(conversation.id);
   scheduleSaveState();
 
   chatInput.value = "";
   chatImageInput.value = "";
+  if (chatImageHint) chatImageHint.textContent = "可選：上傳圖片或 xlsx/csv 供分析";
   render();
 
   maybeGenerateConversationTitle(conversation.id, text || "圖片分析");
@@ -441,11 +523,13 @@ function sendMessage(forcedText = null) {
   if (!hasBackend) {
     runMockThinkingReply(text || "（圖片訊息）", conversation.id);
     pendingImageDataUrl = "";
+    pendingUploadedFile = null;
     return;
   }
 
-  runBackendThinkingReply(text || "請描述這張圖", pendingImageDataUrl, conversation.id);
+  runBackendThinkingReply(text || "請分析我上傳的資料", pendingImageDataUrl, pendingUploadedFile, conversation.id);
   pendingImageDataUrl = "";
+  pendingUploadedFile = null;
 }
 
 function submitRouteConfirmation(label) {
@@ -541,7 +625,7 @@ function nextMessageId() {
   return `msg_${messageIdSeq}`;
 }
 
-async function runBackendThinkingReply(userText, imageDataUrl, conversationId) {
+async function runBackendThinkingReply(userText, imageDataUrl, uploadedFile, conversationId) {
   const conversation = getConversationById(conversationId);
   if (!conversation) return;
 
@@ -572,6 +656,7 @@ async function runBackendThinkingReply(userText, imageDataUrl, conversationId) {
       config: buildExportedConfig(),
       history: buildConversationHistory(conversationId),
       image_data_url: imageDataUrl || null,
+      uploaded_file: uploadedFile || null,
       router_context: conversation.pendingRoute || null,
     };
 
@@ -640,6 +725,37 @@ function fileToDataUrl(file) {
     reader.onerror = () => reject(new Error("圖片讀取失敗"));
     reader.readAsDataURL(file);
   });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const raw = String(reader.result || "");
+      const idx = raw.indexOf(",");
+      resolve(idx >= 0 ? raw.slice(idx + 1) : raw);
+    };
+    reader.onerror = () => reject(new Error("檔案讀取失敗"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadDataFileToBackend(file) {
+  const dataBase64 = await fileToBase64(file);
+  const response = await fetch(`${backendUrl}/files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name,
+      data_base64: dataBase64,
+    }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || `HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  return payload.file || null;
 }
 
 function bumpConversation(conversationId) {
@@ -902,6 +1018,8 @@ function renderSectionCard(unlockSection, title, renderer) {
 }
 
 function renderLLMControls(container, locked) {
+  const memoryForcedByCodeExec = isCodeExecMemoryEnforced();
+
   container.appendChild(createRadioGroup("Model", "llm_model", [
     ["gpt-5.4", "GPT-5.4"],
     ["gpt-5.4-nano", "GPT-5.4-nano"],
@@ -917,17 +1035,24 @@ function renderLLMControls(container, locked) {
   }, locked));
 
   container.appendChild(createCheckbox("Enable Conversation Memory", state.config.llm.memory, (value) => {
+    if (memoryForcedByCodeExec && !value) {
+      state.config.llm.memory = true;
+      renderConfigPreview();
+      renderControls();
+      return;
+    }
     state.config.llm.memory = value;
     renderConfigPreview();
     renderControls();
-  }, locked));
+  }, locked || memoryForcedByCodeExec));
 
   container.appendChild(createSelect(
-    "Memory Rounds (1~10)",
+    memoryForcedByCodeExec ? "Memory Rounds (4~10, forced by Code Execution)" : "Memory Rounds (1~10)",
     Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)]),
     String(state.config.llm.memory_rounds),
     (value) => {
-      state.config.llm.memory_rounds = Number(value);
+      const num = Number(value);
+      state.config.llm.memory_rounds = memoryForcedByCodeExec ? Math.max(4, num) : num;
       renderConfigPreview();
     },
     locked || !state.config.llm.memory,
@@ -1035,30 +1160,36 @@ function renderWebhookControls(container, locked) {
 function renderCodeExecutionControls(container, locked) {
   container.appendChild(createCheckbox("Enable Code Execution", state.config.code_execution.enabled, (value) => {
     state.config.code_execution.enabled = value;
+    if (value) {
+      enforceCodeExecMemoryPolicy();
+    }
+    renderConfigPreview();
+    renderControls();
+  }, locked));
+
+  container.appendChild(createRadioGroup("Execution Flow", "code_flow_mode", [
+    ["auto", "Automatic (execute directly)"],
+    ["manual", "Manual (show code + Yes/No)"],
+  ], state.config.code_execution.auto_run ? "auto" : "manual", (value) => {
+    state.config.code_execution.auto_run = value === "auto";
     renderConfigPreview();
   }, locked));
 
-  container.appendChild(createRadioGroup("Execution Mode", "code_mode", [
-    ["safe", "Safe Mode (limited)"],
-    ["full", "Full Mode (dangerous)"],
-  ], state.config.code_execution.mode, (value) => {
-    state.config.code_execution.mode = value;
-    renderConfigPreview();
-  }, locked));
+  const libsWrap = document.createElement("div");
+  const libsTitle = document.createElement("div");
+  libsTitle.textContent = "Environment Libraries (read-only)";
+  const libsList = document.createElement("div");
+  libsList.className = "option-grid";
+  const detected = state.runtime_env.supported_libraries || [];
+  const source = detected.length > 0 ? detected : DEFAULT_CODE_LIBRARIES;
+  libsList.textContent = source.join(", ");
+  if (locked || !state.config.code_execution.enabled) {
+    libsList.style.opacity = "0.5";
+  }
+  libsWrap.appendChild(libsTitle);
+  libsWrap.appendChild(libsList);
+  container.appendChild(libsWrap);
 
-  container.appendChild(createCheckboxList("Allow Libraries", [
-    ["pandas", "pandas"],
-    ["matplotlib", "matplotlib"],
-    ["numpy", "numpy"],
-  ], state.config.code_execution.libraries, (arr) => {
-    state.config.code_execution.libraries = arr;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createCheckbox("Execute Automatically", state.config.code_execution.auto_run, (value) => {
-    state.config.code_execution.auto_run = value;
-    renderConfigPreview();
-  }, locked));
 }
 
 function renderSecurityControls(container, locked) {
@@ -1275,6 +1406,7 @@ function createCheckboxList(titleText, options, selectedArray, onChange, disable
 }
 
 function buildExportedConfig() {
+  enforceCodeExecMemoryPolicy();
   return {
     llm: {
       model: state.config.llm.model,
@@ -1305,7 +1437,6 @@ function buildExportedConfig() {
     },
     code_execution: {
       enabled: state.currentSection >= 4 ? state.config.code_execution.enabled : false,
-      mode: state.config.code_execution.mode,
       libraries: state.config.code_execution.libraries,
       auto_run: state.config.code_execution.auto_run,
     },
@@ -1622,8 +1753,9 @@ function renderTaskPanel() {
 function renderRouteConfirmBar() {
   const conversation = getCurrentConversation();
   const pending = conversation?.pendingRoute || null;
-  const isCollecting = pending && pending.stage === "collect_datetime";
-  if (!conversation || !pending || isCollecting) {
+  const stage = pending?.stage || "";
+  const isCollecting = pending && (stage === "collect_datetime" || stage === "collect_code_requirements");
+  if (!conversation || !pending || isCollecting || !isConfirmPendingRoute(pending)) {
     routeConfirmBar.hidden = true;
     chatInputRow?.classList.remove("confirm-pending");
     chatInput.disabled = false;
@@ -1691,11 +1823,15 @@ function renderMarkdown(text) {
   });
 
   withCodeTokens = withCodeTokens
+    .replace(
+      /!\[([^\]]*)\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+|https?:\/\/[^\s)]+)\)/g,
+      '<img src="$2" alt="$1" loading="lazy" />',
+    )
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
     )
     .replace(

@@ -62,6 +62,23 @@ def section_backend_path(section: int) -> Path:
     return PROJECT_ROOT / SECTION_DIRS[section] / "app.py"
 
 
+def _start_backend_log_pump(proc: subprocess.Popen, section: int) -> None:
+    if proc.stdout is None:
+        return
+
+    def _pump() -> None:
+        try:
+            for line in proc.stdout:
+                text = line.rstrip()
+                if text:
+                    print(f"[section-{section}] {text}")
+        except Exception:
+            return
+
+    thread = threading.Thread(target=_pump, daemon=True)
+    thread.start()
+
+
 def start_section_backend(section: int, backend_port: int) -> Optional[subprocess.Popen]:
     app_path = section_backend_path(section)
     if not app_path.exists():
@@ -74,10 +91,12 @@ def start_section_backend(section: int, backend_port: int) -> Optional[subproces
     proc = subprocess.Popen(
         cmd,
         cwd=str(section_dir),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
+        bufsize=1,
     )
+    _start_backend_log_pump(proc, section)
 
     time.sleep(1.2)
     if proc.poll() is not None:
@@ -132,8 +151,14 @@ def main() -> None:
         while True:
             time.sleep(0.5)
             if backend_proc is not None and backend_proc.poll() is not None:
-                print("[manager] Backend stopped. UI remains available in mock mode.")
-                backend_proc = None
+                return_code = backend_proc.returncode
+                print(f"[manager] Backend stopped unexpectedly (code={return_code}).")
+                print("[manager] Attempting auto-restart...")
+                backend_proc = start_section_backend(section, BACKEND_PORT)
+                if backend_proc is None:
+                    print("[manager] Restart failed. UI remains available in mock mode.")
+                    break
+                print(f"[manager] Backend restarted at http://127.0.0.1:{BACKEND_PORT}")
     except KeyboardInterrupt:
         pass
     finally:

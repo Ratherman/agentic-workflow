@@ -190,6 +190,40 @@ def _route_with_llm(client: OpenAI, model: str, structured_mode: str, user_messa
             return RouteDecision(action_type="llm", target="none", reason=f"pydantic parse failed: {exc}"), retry_raw
 
 
+def _llm_tool_intent_fallback(client: OpenAI, model: str, user_message: str) -> Optional[RouteDecision]:
+    prompt = (
+        "You are a strict intent classifier. Return JSON only with fields: "
+        "use_tool(boolean), target(string), reason(string). "
+        "Allowed targets: create_task, search_web, none. "
+        "Rules: "
+        "- If user asks to add/create a task or todo -> create_task. "
+        "- If user asks to search web/internet/news -> search_web. "
+        "- Otherwise target=none."
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        raw = response.choices[0].message.content or "{}"
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            return None
+        target = str(payload.get("target", "none")).strip().lower()
+        use_tool = bool(payload.get("use_tool", False))
+        reason = str(payload.get("reason", "")).strip() or "llm fallback classifier"
+        if use_tool and target in TOOL_TARGETS:
+            return RouteDecision(action_type="tool", target=target, reason=reason)
+        return None
+    except Exception:
+        return None
+
+
 def _run_tool(target: str, user_message: str) -> Dict[str, Any]:
     fn = TOOL_REGISTRY.get(target)
     if not fn:
@@ -396,6 +430,35 @@ def handle_section2_chat(
             user_message=user_message,
         )
         route_mode = structured_mode
+        if tool_enabled and decision.action_type != "tool":
+            llm_fallback_decision = _llm_tool_intent_fallback(
+                client=client,
+                model=model,
+                user_message=user_message,
+            )
+            if llm_fallback_decision:
+                decision = llm_fallback_decision
+
+    # Fail-safe override:
+    # If LLM router parsing fails and falls back to llm, but intent is very clear,
+    # we still route to tool to avoid UX regression in teaching demos.
+    if (
+        tool_enabled
+        and decision.action_type == "llm"
+        and "parse failed" in (decision.reason or "").lower()
+    ):
+        if _looks_like_task_intent(user_message):
+            decision = RouteDecision(
+                action_type="tool",
+                target="create_task",
+                reason="router parse failed; fallback override to create_task",
+            )
+        elif _looks_like_web_search_intent(user_message):
+            decision = RouteDecision(
+                action_type="tool",
+                target="search_web",
+                reason="router parse failed; fallback override to search_web",
+            )
 
     # Section 2 UX guardrail:
     # if user clearly asks to create a task, do not drift to workflow routing.
