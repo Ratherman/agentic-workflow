@@ -59,3 +59,28 @@ def toggle_task(task_id: str) -> Optional[Dict]:
             break
     save_tasks(tasks)
     return target
+
+
+def update_task(task_id: str, title: str) -> Optional[Dict]:
+    tasks = load_tasks()
+    target = None
+    for task in tasks:
+        if task.get("id") == task_id:
+            task["title"] = title.strip()
+            target = task
+            break
+    save_tasks(tasks)
+    return target
+
+
+def delete_task(task_id: str) -> Optional[Dict]:
+    tasks = load_tasks()
+    deleted = None
+    kept: List[Dict] = []
+    for task in tasks:
+        if task.get("id") == task_id and deleted is None:
+            deleted = task
+            continue
+        kept.append(task)
+    save_tasks(kept)
+    return deleted

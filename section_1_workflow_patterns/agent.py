@@ -67,18 +67,12 @@ def handle_section1_chat(
                 "pending_route": None,
             }
         if confirm is False:
-            fallback = run_chat(
-                user_message=user_message,
-                llm_config=llm_cfg,
-                history=history,
-                image_data_url=image_data_url,
-            )
             return {
-                "reply": f"你選擇 No，改由 LLM 直接回答：\n\n{fallback.reply}",
+                "reply": "你選擇不執行此步驟，已取消本次動作。",
                 "router": {
                     "action_type": "llm",
                     "target": "none",
-                    "reason": "user rejected action",
+                    "reason": "user rejected action, cancelled",
                     "mode": router_context.get("mode", "pydantic"),
                 },
                 "pending_route": None,

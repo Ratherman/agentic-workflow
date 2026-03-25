@@ -1,32 +1,14 @@
 [
   {
-    "id": "712c2b98-9602-4432-a3b3-978ff40d0e54",
-    "title": "吃飯",
-    "status": "done",
-    "source": "manual"
-  },
-  {
-    "id": "a47de4b0-84ad-45e6-9f70-09ce297215cd",
-    "title": "睡覺",
-    "status": "done",
-    "source": "manual"
-  },
-  {
-    "id": "2986001f-5ccd-40ea-89fb-5f73c58ff512",
-    "title": "跳舞",
-    "status": "done",
-    "source": "manual"
-  },
-  {
-    "id": "5aa65c3b-2a6d-4501-aeab-7f36bf8eae6b",
-    "title": "跳傘",
-    "status": "done",
-    "source": "manual"
-  },
-  {
-    "id": "065dab61-f6f3-4cb4-baa7-d7f524b235b4",
-    "title": "拜拜",
+    "id": "4e938124-cf68-4a55-a8e2-795fea719569",
+    "title": "記得說早安",
     "status": "pending",
     "source": "manual"
+  },
+  {
+    "id": "5a8b9f5b-1424-40b3-ac86-f2a917c6f8a6",
+    "title": "今天六點前要繳交投影片",
+    "status": "pending",
+    "source": "tool"
   }
 ]

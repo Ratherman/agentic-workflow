@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from section_0_basic_llm.llm import run_chat, generate_chat_title
 from shared.conversation_store import load_conversations_state, save_conversations_state
-from shared.task_store import load_tasks, create_task, toggle_task
+from shared.task_store import load_tasks, create_task, toggle_task, update_task, delete_task
 
 
 class ChatRequest(BaseModel):
@@ -39,6 +39,15 @@ class TaskToggleRequest(BaseModel):
     task_id: str
 
 
+class TaskUpdateRequest(BaseModel):
+    task_id: str
+    title: str
+
+
+class TaskDeleteRequest(BaseModel):
+    task_id: str
+
+
 class ConversationsSyncRequest(BaseModel):
     conversations: list
     currentConversationId: Optional[str] = None
@@ -59,15 +68,16 @@ class Section0Handler(BaseHTTPRequestHandler):
         self._set_headers(200)
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path == "/health":
             self._set_headers(200)
             self.wfile.write(json.dumps({"ok": True, "section": 0}).encode("utf-8"))
             return
-        if self.path == "/tasks":
+        if path == "/tasks":
             self._set_headers(200)
             self.wfile.write(json.dumps({"tasks": load_tasks()}, ensure_ascii=False).encode("utf-8"))
             return
-        if self.path == "/conversations":
+        if path == "/conversations":
             self._set_headers(200)
             self.wfile.write(json.dumps(load_conversations_state(), ensure_ascii=False).encode("utf-8"))
             return
@@ -76,7 +86,8 @@ class Section0Handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({"error": "not found"}).encode("utf-8"))
 
     def do_POST(self) -> None:
-        if self.path not in {"/chat", "/title", "/tasks", "/tasks/toggle", "/conversations/sync"}:
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path not in {"/chat", "/title", "/tasks", "/tasks/toggle", "/tasks/update", "/tasks/edit", "/tasks/delete", "/tasks/remove", "/conversations/sync"}:
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "not found"}).encode("utf-8"))
             return
@@ -87,14 +98,14 @@ class Section0Handler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body)
 
-            if self.path == "/title":
+            if path == "/title":
                 request = TitleRequest.model_validate(payload)
                 llm_cfg = request.config.get("llm", {})
                 title = generate_chat_title(seed_message=request.message, llm_config=llm_cfg)
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"title": title}, ensure_ascii=False).encode("utf-8"))
                 return
-            if self.path == "/tasks":
+            if path == "/tasks":
                 request = TaskCreateRequest.model_validate(payload)
                 if not request.title.strip():
                     raise RuntimeError("Task title cannot be empty.")
@@ -102,7 +113,7 @@ class Section0Handler(BaseHTTPRequestHandler):
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"task": task, "tasks": load_tasks()}, ensure_ascii=False).encode("utf-8"))
                 return
-            if self.path == "/tasks/toggle":
+            if path == "/tasks/toggle":
                 request = TaskToggleRequest.model_validate(payload)
                 task = toggle_task(task_id=request.task_id)
                 if task is None:
@@ -112,7 +123,29 @@ class Section0Handler(BaseHTTPRequestHandler):
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"task": task, "tasks": load_tasks()}, ensure_ascii=False).encode("utf-8"))
                 return
-            if self.path == "/conversations/sync":
+            if path in {"/tasks/update", "/tasks/edit"}:
+                request = TaskUpdateRequest.model_validate(payload)
+                if not request.title.strip():
+                    raise RuntimeError("Task title cannot be empty.")
+                task = update_task(task_id=request.task_id, title=request.title)
+                if task is None:
+                    self._set_headers(404)
+                    self.wfile.write(json.dumps({"error": "task not found"}).encode("utf-8"))
+                    return
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"task": task, "tasks": load_tasks()}, ensure_ascii=False).encode("utf-8"))
+                return
+            if path in {"/tasks/delete", "/tasks/remove"}:
+                request = TaskDeleteRequest.model_validate(payload)
+                task = delete_task(task_id=request.task_id)
+                if task is None:
+                    self._set_headers(404)
+                    self.wfile.write(json.dumps({"error": "task not found"}).encode("utf-8"))
+                    return
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"task": task, "tasks": load_tasks()}, ensure_ascii=False).encode("utf-8"))
+                return
+            if path == "/conversations/sync":
                 request = ConversationsSyncRequest.model_validate(payload)
                 save_conversations_state(
                     {

@@ -44,7 +44,7 @@ const state = {
     },
     tool: {
       enabled: false,
-      tools: [],
+      tools: ["create_task", "search_web"],
       mode: "auto",
     },
     webhook: {
@@ -90,6 +90,7 @@ const currentChatTitle = document.getElementById("current-chat-title");
 const taskListEl = document.getElementById("task-list");
 const taskInputEl = document.getElementById("task-input");
 const addTaskBtn = document.getElementById("add-task-btn");
+const controlsFoldEl = document.getElementById("controls-fold");
 const runtimeFoldEl = document.getElementById("runtime-fold");
 const taskFoldEl = document.getElementById("task-fold");
 const routeConfirmBar = document.getElementById("route-confirm-bar");
@@ -99,6 +100,11 @@ const routeNoBtn = document.getElementById("route-no-btn");
 
 let pendingImageDataUrl = "";
 let saveTimer = null;
+let taskEditingId = null;
+let taskEditingDraft = "";
+let conversationMenuId = null;
+let conversationEditingId = null;
+let conversationEditingDraft = "";
 
 function init() {
   for (let i = 0; i <= maxSection; i += 1) {
@@ -132,12 +138,13 @@ function init() {
   newChatBtn.addEventListener("click", () => {
     const created = createConversation({ title: "新聊天室", withWelcome: true });
     state.currentConversationId = created.id;
+    conversationMenuId = null;
     routeConfirmBar.hidden = true;
     scheduleSaveState();
     render();
   });
 
-  sendBtn.addEventListener("click", sendMessage);
+  sendBtn.addEventListener("click", () => sendMessage());
   routeYesBtn.addEventListener("click", () => submitRouteConfirmation("Yes"));
   routeNoBtn.addEventListener("click", () => submitRouteConfirmation("No"));
   addTaskBtn.addEventListener("click", handleAddTask);
@@ -176,12 +183,34 @@ function init() {
     }
   });
 
-  // Accordion behavior: Runtime Config and Task Panel only one open at a time.
+  // Accordion behavior: Control/Runtime/Task only one open at a time.
+  controlsFoldEl.addEventListener("toggle", () => {
+    if (controlsFoldEl.open) {
+      runtimeFoldEl.open = false;
+      taskFoldEl.open = false;
+    }
+  });
   runtimeFoldEl.addEventListener("toggle", () => {
-    if (runtimeFoldEl.open) taskFoldEl.open = false;
+    if (runtimeFoldEl.open) {
+      controlsFoldEl.open = false;
+      taskFoldEl.open = false;
+    }
   });
   taskFoldEl.addEventListener("toggle", () => {
-    if (taskFoldEl.open) runtimeFoldEl.open = false;
+    if (taskFoldEl.open) {
+      controlsFoldEl.open = false;
+      runtimeFoldEl.open = false;
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest(".conversation-actions")) {
+      if (conversationMenuId !== null) {
+        conversationMenuId = null;
+        renderConversations();
+      }
+    }
   });
 
   render();
@@ -227,6 +256,7 @@ function loadStateFromStorage() {
       state.config.llm = { ...state.config.llm, ...(saved.config.llm || {}) };
       state.config.workflow = { ...state.config.workflow, ...(saved.config.workflow || {}) };
       state.config.tool = { ...state.config.tool, ...(saved.config.tool || {}) };
+      state.config.tool.tools = ["create_task", "search_web"];
       state.config.webhook = { ...state.config.webhook, ...(saved.config.webhook || {}) };
       state.config.code_execution = { ...state.config.code_execution, ...(saved.config.code_execution || {}) };
       state.config.security = { ...state.config.security, ...(saved.config.security || {}) };
@@ -553,6 +583,9 @@ async function runBackendThinkingReply(userText, imageDataUrl, conversationId) {
     conversation.pendingRoute = data.pending_route || null;
     scheduleSaveState();
     replaceThinkingWithFinal(conversationId, thinkingId, data.reply || "後端未回傳內容。");
+    if (data?.router?.action_type === "tool" && data?.router?.target === "create_task") {
+      await loadTasksFromBackend();
+    }
   } catch (error) {
     replaceThinkingWithFinal(
       conversationId,
@@ -635,6 +668,7 @@ function renderConversations() {
 
     item.addEventListener("click", () => {
       state.currentConversationId = conversation.id;
+      conversationMenuId = null;
       routeConfirmBar.hidden = true;
       scheduleSaveState();
       render();
@@ -643,27 +677,110 @@ function renderConversations() {
     const top = document.createElement("div");
     top.className = "conversation-top";
 
-    const title = document.createElement("div");
-    title.className = "conversation-title";
-    title.textContent = conversation.titleGenerating ? `${conversation.title}...` : conversation.title;
+    const isEditing = conversationEditingId === conversation.id;
 
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "edit-title-btn";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const next = prompt("編輯聊天室標題", conversation.title);
-      if (!next) return;
-      conversation.title = next.trim() || conversation.title;
-      conversation.titleManual = true;
-      scheduleSaveState();
-      renderConversations();
-      renderCurrentConversationTitle();
-    });
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "conversation-title-wrap";
 
-    top.appendChild(title);
-    top.appendChild(editBtn);
+    let titleNode;
+    if (isEditing) {
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.className = "conversation-title-input";
+      titleInput.value = conversationEditingDraft;
+      titleInput.addEventListener("input", (event) => {
+        conversationEditingDraft = event.target.value;
+      });
+      titleInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          saveConversationTitle(conversation.id);
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelConversationEdit();
+        }
+      });
+      setTimeout(() => titleInput.focus(), 0);
+      titleNode = titleInput;
+    } else {
+      const title = document.createElement("div");
+      title.className = "conversation-title";
+      title.textContent = conversation.titleGenerating ? `${conversation.title}...` : conversation.title;
+      titleNode = title;
+    }
+    titleWrap.appendChild(titleNode);
+
+    const actions = document.createElement("div");
+    actions.className = "conversation-actions";
+
+    if (isEditing) {
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "conversation-menu-item";
+      saveBtn.textContent = "Save";
+      saveBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        saveConversationTitle(conversation.id);
+      });
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "conversation-menu-item";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        cancelConversationEdit();
+      });
+
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+    } else {
+      const menuBtn = document.createElement("button");
+      menuBtn.type = "button";
+      menuBtn.className = "conversation-menu-btn";
+      menuBtn.textContent = "...";
+      menuBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        conversationMenuId = conversationMenuId === conversation.id ? null : conversation.id;
+        renderConversations();
+      });
+      actions.appendChild(menuBtn);
+    }
+
+    if (!isEditing && conversationMenuId === conversation.id) {
+      const menu = document.createElement("div");
+      menu.className = "conversation-menu";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "conversation-menu-item";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        conversationEditingId = conversation.id;
+        conversationEditingDraft = conversation.title || "";
+        conversationMenuId = null;
+        renderConversations();
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "conversation-menu-item danger";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        conversationMenuId = null;
+        handleDeleteConversation(conversation.id);
+      });
+
+      menu.appendChild(editBtn);
+      menu.appendChild(deleteBtn);
+      actions.appendChild(menu);
+    }
+
+    top.appendChild(titleWrap);
+    top.appendChild(actions);
 
     const preview = document.createElement("div");
     preview.className = "conversation-preview";
@@ -674,6 +791,46 @@ function renderConversations() {
     item.appendChild(preview);
     conversationList.appendChild(item);
   });
+}
+
+function saveConversationTitle(conversationId) {
+  const conversation = getConversationById(conversationId);
+  if (!conversation) return;
+  const next = (conversationEditingDraft || "").trim();
+  if (!next) return;
+  conversation.title = next;
+  conversation.titleManual = true;
+  conversationEditingId = null;
+  conversationEditingDraft = "";
+  scheduleSaveState();
+  renderConversations();
+  renderCurrentConversationTitle();
+}
+
+function cancelConversationEdit() {
+  conversationEditingId = null;
+  conversationEditingDraft = "";
+  renderConversations();
+}
+
+function handleDeleteConversation(conversationId) {
+  const idx = state.conversations.findIndex((item) => item.id === conversationId);
+  if (idx === -1) return;
+
+  state.conversations.splice(idx, 1);
+
+  if (state.currentConversationId === conversationId) {
+    if (state.conversations.length > 0) {
+      state.currentConversationId = state.conversations[0].id;
+    } else {
+      const created = createConversation({ title: "新聊天室", withWelcome: true });
+      state.currentConversationId = created.id;
+    }
+  }
+
+  scheduleSaveState();
+  conversationMenuId = null;
+  render();
 }
 
 function getLastVisibleMessage(conversation) {
@@ -797,16 +954,21 @@ function renderToolControls(container, locked) {
   container.appendChild(createCheckbox("Enable Tool Calling", state.config.tool.enabled, (value) => {
     state.config.tool.enabled = value;
     renderConfigPreview();
+    renderControls();
   }, locked));
 
-  container.appendChild(createCheckboxList("Available Tools", [
-    ["create_task", "Create Task"],
-    ["send_email", "Send Email"],
-    ["query_schedule", "Query Schedule"],
-  ], state.config.tool.tools, (arr) => {
-    state.config.tool.tools = arr;
-    renderConfigPreview();
-  }, locked));
+  const toolsBlock = document.createElement("div");
+  const toolsTitle = document.createElement("div");
+  toolsTitle.textContent = "Available Tools";
+  const toolsList = document.createElement("div");
+  toolsList.className = "option-grid";
+  toolsList.textContent = "Create Task, Search Web (Tavily)";
+  if (locked || !state.config.tool.enabled) {
+    toolsList.style.opacity = "0.5";
+  }
+  toolsBlock.appendChild(toolsTitle);
+  toolsBlock.appendChild(toolsList);
+  container.appendChild(toolsBlock);
 
   container.appendChild(createRadioGroup("Tool Mode", "tool_mode", [
     ["auto", "Auto (LLM decides)"],
@@ -814,7 +976,7 @@ function renderToolControls(container, locked) {
   ], state.config.tool.mode, (value) => {
     state.config.tool.mode = value;
     renderConfigPreview();
-  }, locked));
+  }, locked || !state.config.tool.enabled));
 }
 
 function renderWebhookControls(container, locked) {
@@ -1081,7 +1243,7 @@ function buildExportedConfig() {
     },
     tool: {
       enabled: state.currentSection >= 2 ? state.config.tool.enabled : false,
-      tools: state.config.tool.tools,
+      tools: ["create_task", "search_web"],
       mode: state.config.tool.mode,
     },
     webhook: {
@@ -1197,6 +1359,101 @@ async function handleToggleTask(taskId) {
   }
 }
 
+function startEditTask(taskId) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+  taskEditingId = taskId;
+  taskEditingDraft = String(task.title || "");
+  renderTaskPanel();
+}
+
+function cancelEditTask() {
+  taskEditingId = null;
+  taskEditingDraft = "";
+  renderTaskPanel();
+}
+
+async function saveEditTask(taskId) {
+  const title = String(taskEditingDraft || "").trim();
+  if (!title) {
+    alert("任務名稱不能為空。");
+    return;
+  }
+
+  if (!hasBackend) {
+    const task = state.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    task.title = title;
+    taskEditingId = null;
+    taskEditingDraft = "";
+    scheduleSaveState();
+    renderTaskPanel();
+    return;
+  }
+
+  try {
+    let response = await fetch(`${backendUrl}/tasks/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, title }),
+    });
+    if (response.status === 404) {
+      response = await fetch(`${backendUrl}/tasks/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId, title }),
+      });
+    }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || err.error || `HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    state.tasks = Array.isArray(payload.tasks) ? payload.tasks : state.tasks;
+    taskEditingId = null;
+    taskEditingDraft = "";
+    renderTaskPanel();
+  } catch (error) {
+    alert(`編輯任務失敗：${String(error)}`);
+  }
+}
+
+async function handleDeleteTask(taskId) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+
+  if (!hasBackend) {
+    state.tasks = state.tasks.filter((item) => item.id !== taskId);
+    scheduleSaveState();
+    renderTaskPanel();
+    return;
+  }
+
+  try {
+    let response = await fetch(`${backendUrl}/tasks/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId }),
+    });
+    if (response.status === 404) {
+      response = await fetch(`${backendUrl}/tasks/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId }),
+      });
+    }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || err.error || `HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    state.tasks = Array.isArray(payload.tasks) ? payload.tasks : state.tasks;
+    renderTaskPanel();
+  } catch (error) {
+    alert(`刪除任務失敗：${String(error)}`);
+  }
+}
+
 function renderTaskPanel() {
   taskListEl.innerHTML = "";
   taskInputEl.disabled = false;
@@ -1221,7 +1478,7 @@ function renderTaskPanel() {
     .map((item) => item.task);
 
   orderedTasks.forEach((task) => {
-    const row = document.createElement("label");
+    const row = document.createElement("div");
     row.className = "task-item";
     if (task.status === "done") {
       row.classList.add("done");
@@ -1232,17 +1489,80 @@ function renderTaskPanel() {
     checkbox.checked = task.status === "done";
     checkbox.addEventListener("change", () => handleToggleTask(task.id));
 
-    const title = document.createElement("span");
-    title.className = "task-title";
-    title.textContent = task.title || "(untitled task)";
+    const isEditing = taskEditingId === task.id;
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "task-title-wrap";
+
+    let title;
+    if (isEditing) {
+      title = document.createElement("input");
+      title.type = "text";
+      title.className = "task-title-input";
+      title.value = taskEditingDraft;
+      title.addEventListener("input", (event) => {
+        taskEditingDraft = event.target.value;
+      });
+      title.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          saveEditTask(task.id);
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelEditTask();
+        }
+      });
+      setTimeout(() => title.focus(), 0);
+    } else {
+      title = document.createElement("span");
+      title.className = "task-title";
+      title.textContent = task.title || "(untitled task)";
+    }
+    titleWrap.appendChild(title);
 
     const source = document.createElement("span");
     source.className = "task-source";
     source.textContent = task.source || "manual";
 
+    const actions = document.createElement("div");
+    actions.className = "task-actions";
+
+    if (isEditing) {
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "task-action-btn";
+      saveBtn.textContent = "Save";
+      saveBtn.addEventListener("click", () => saveEditTask(task.id));
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "task-action-btn";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.addEventListener("click", cancelEditTask);
+
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+    } else {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "task-action-btn";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", () => startEditTask(task.id));
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "task-action-btn danger";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", () => handleDeleteTask(task.id));
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+    }
+
     row.appendChild(checkbox);
-    row.appendChild(title);
+    row.appendChild(titleWrap);
     row.appendChild(source);
+    row.appendChild(actions);
     taskListEl.appendChild(row);
   });
 }
@@ -1305,7 +1625,8 @@ function renderPlainText(text) {
 }
 
 function renderMarkdown(text) {
-  const escaped = escapeHtml(text);
+  const normalizedText = normalizeReferenceTitleLinks(text);
+  const escaped = escapeHtml(normalizedText);
   const fencedRe = /```([\s\S]*?)```/g;
   const codeBlocks = [];
   let withCodeTokens = escaped.replace(fencedRe, (_m, code) => {
@@ -1317,7 +1638,15 @@ function renderMarkdown(text) {
   withCodeTokens = withCodeTokens
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    )
+    .replace(
+      /(^|[\s(>])(https?:\/\/[^\s<)]+)/g,
+      '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>',
+    );
 
   const lines = withCodeTokens.split("\n");
   const html = [];
@@ -1325,8 +1654,33 @@ function renderMarkdown(text) {
   let inOl = false;
 
   lines.forEach((line) => {
+    const h4Match = line.match(/^\s*####\s+(.+)$/);
+    const h3Match = line.match(/^\s*###\s+(.+)$/);
+    const h2Match = line.match(/^\s*##\s+(.+)$/);
+    const h1Match = line.match(/^\s*#\s+(.+)$/);
     const ulMatch = line.match(/^\s*[-*]\s+(.+)$/);
     const olMatch = line.match(/^\s*\d+\.\s+(.+)$/);
+
+    if (h4Match || h3Match || h2Match || h1Match) {
+      if (inUl) {
+        html.push("</ul>");
+        inUl = false;
+      }
+      if (inOl) {
+        html.push("</ol>");
+        inOl = false;
+      }
+      if (h4Match) {
+        html.push(`<h4>${h4Match[1]}</h4>`);
+      } else if (h3Match) {
+        html.push(`<h3>${h3Match[1]}</h3>`);
+      } else if (h2Match) {
+        html.push(`<h2>${h2Match[1]}</h2>`);
+      } else {
+        html.push(`<h1>${h1Match[1]}</h1>`);
+      }
+      return;
+    }
 
     if (ulMatch) {
       if (inOl) {
@@ -1378,6 +1732,32 @@ function renderMarkdown(text) {
     out = out.replace(`@@CODEBLOCK_${idx}@@`, block);
   });
   return out;
+}
+
+function normalizeReferenceTitleLinks(text) {
+  const lines = String(text || "").split("\n");
+  const out = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const current = lines[i] || "";
+    const next = lines[i + 1] || "";
+
+    const titleMatch = current.match(/^(\s*\d+\.\s+)(.+)$/);
+    const urlMatch = next.trim().match(/^(https?:\/\/\S+)$/);
+
+    if (titleMatch && urlMatch) {
+      const prefix = titleMatch[1];
+      const title = titleMatch[2].trim();
+      const url = urlMatch[1].trim();
+      out.push(`${prefix}[${title}](${url})`);
+      i += 1;
+      continue;
+    }
+
+    out.push(current);
+  }
+
+  return out.join("\n");
 }
 
 function escapeHtml(raw) {
