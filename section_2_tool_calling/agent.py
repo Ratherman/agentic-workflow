@@ -153,7 +153,31 @@ def _route_with_llm(client: OpenAI, model: str, structured_mode: str, user_messa
                 raise ValueError("router output is not object")
             return _coerce_decision(payload), raw
         except Exception as exc:  # noqa: BLE001
-            return RouteDecision(action_type="llm", target="none", reason=f"prompt_only parse failed: {exc}"), raw
+            # Fallback to strict JSON mode before giving up.
+            retry = client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _build_router_prompt() + " Return strict JSON object only."},
+                    {"role": "user", "content": user_message},
+                ],
+            )
+            retry_raw = retry.choices[0].message.content or ""
+            try:
+                payload = json.loads(retry_raw)
+                if not isinstance(payload, dict):
+                    raise ValueError("router output is not object")
+                decision = _coerce_decision(payload)
+                if decision.action_type == "llm":
+                    decision = RouteDecision(
+                        action_type="llm",
+                        target="none",
+                        reason=f"prompt_only parse failed -> pydantic fallback: {decision.reason}",
+                    )
+                return decision, retry_raw
+            except Exception:
+                return RouteDecision(action_type="llm", target="none", reason=f"prompt_only parse failed: {exc}"), raw
 
     response = client.chat.completions.create(
         model=model,

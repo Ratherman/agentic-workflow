@@ -63,8 +63,6 @@ const state = {
     security: {
       moderation: false,
       guardrails: false,
-      injection_protection: "basic",
-      role: "staff",
     },
     production: {
       enabled: false,
@@ -490,7 +488,14 @@ function isConfirmPendingRoute(pending) {
   if (!pending || typeof pending !== "object") return false;
   const stage = String(pending.stage || "");
   // Only confirmation stages should lock free-text input.
-  return stage.startsWith("confirm_");
+  if (stage.startsWith("confirm_")) return true;
+  // Backward-compatible: some sections still use pending_route without stage.
+  // If action_type is present and no collect stage, treat it as confirmation pending.
+  const actionType = String(pending.action_type || "");
+  if (!stage && (actionType === "tool" || actionType === "workflow" || actionType === "code")) {
+    return true;
+  }
+  return false;
 }
 
 function sendMessage(forcedText = null) {
@@ -1202,23 +1207,6 @@ function renderSecurityControls(container, locked) {
     state.config.security.guardrails = value;
     renderConfigPreview();
   }, locked));
-
-  container.appendChild(createRadioGroup("Prompt Injection Protection", "security_injection", [
-    ["basic", "Basic"],
-    ["strict", "Strict"],
-  ], state.config.security.injection_protection, (value) => {
-    state.config.security.injection_protection = value;
-    renderConfigPreview();
-  }, locked));
-
-  container.appendChild(createRadioGroup("Tool Permission", "security_role", [
-    ["admin", "Admin"],
-    ["staff", "Staff"],
-    ["viewer", "Viewer"],
-  ], state.config.security.role, (value) => {
-    state.config.security.role = value;
-    renderConfigPreview();
-  }, locked));
 }
 
 function renderProductionControls(container, locked) {
@@ -1443,8 +1431,6 @@ function buildExportedConfig() {
     security: {
       moderation: state.currentSection >= 5 ? state.config.security.moderation : false,
       guardrails: state.currentSection >= 5 ? state.config.security.guardrails : false,
-      injection_protection: state.config.security.injection_protection,
-      role: state.config.security.role,
     },
     production: {
       enabled: state.currentSection >= 6 ? state.config.production.enabled : false,
