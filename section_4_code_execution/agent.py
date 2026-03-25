@@ -109,11 +109,28 @@ def _should_force_direct_plan(user_message: str, uploaded_file: Optional[Dict[st
     return _has_export_intent(user_message) and _has_data_cleaning_intent(user_message)
 
 
+def _build_history_context(history: List[Dict[str, Any]], limit: int = 6) -> str:
+    if not isinstance(history, list) or not history:
+        return ""
+    recent = history[-limit:]
+    lines: List[str] = []
+    for item in recent:
+        role = str(item.get("role", "assistant"))
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        lines.append(f"{role}: {text}")
+    if not lines:
+        return ""
+    return "Recent conversation context:\n" + "\n\n".join(lines) + "\n"
+
+
 def _build_codegen_prompt(
     user_message: str,
     libraries: List[str],
     uploaded_file: Optional[Dict[str, str]],
     force_direct: bool,
+    history_context: str,
 ) -> str:
     file_context = ""
     if uploaded_file:
@@ -162,6 +179,7 @@ def _build_codegen_prompt(
         "11) If file upload exists, use UPLOADED_FILE_PATH first; avoid hardcoded local paths.\n"
         f"Allowed libs: {', '.join(libraries) if libraries else 'none'}.\n"
         f"{file_context}"
+        f"{history_context}"
         f"{direct_rule}"
         f"User request: {user_message}"
     )
@@ -172,6 +190,7 @@ def _generate_plan_with_llm(
     llm_cfg: Dict[str, Any],
     libraries: List[str],
     uploaded_file: Optional[Dict[str, str]],
+    history_context: str,
     force_direct: bool = False,
 ) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -197,6 +216,7 @@ def _generate_plan_with_llm(
                     libraries=libraries,
                     uploaded_file=uploaded_file,
                     force_direct=force_direct,
+                    history_context=history_context,
                 ),
             },
             {"role": "user", "content": user_message},
@@ -217,6 +237,7 @@ def _plan_with_optional_retry(
     llm_cfg: Dict[str, Any],
     libraries: List[str],
     uploaded_file: Optional[Dict[str, str]],
+    history_context: str,
 ) -> Dict[str, Any]:
     force_direct = _should_force_direct_plan(user_message, uploaded_file)
     plan = _generate_plan_with_llm(
@@ -224,6 +245,7 @@ def _plan_with_optional_retry(
         llm_cfg=llm_cfg,
         libraries=libraries,
         uploaded_file=uploaded_file,
+        history_context=history_context,
         force_direct=False,
     )
 
@@ -233,6 +255,7 @@ def _plan_with_optional_retry(
             llm_cfg=llm_cfg,
             libraries=libraries,
             uploaded_file=uploaded_file,
+            history_context=history_context,
             force_direct=True,
         )
         if retry_plan.get("code"):
@@ -338,6 +361,7 @@ def handle_section4_chat(
     auto_run = _to_auto_run(config)
     libraries = _to_libraries(config)
     normalized_file = _normalize_uploaded_file(uploaded_file)
+    history_context = _build_history_context(history)
 
     if router_context and router_context.get("stage") == "confirm_code_execute":
         confirm = _is_yes_no(user_message)
@@ -372,7 +396,13 @@ def handle_section4_chat(
         original = str(router_context.get("original_request", "")).strip()
         merged_request = f"{original}\n補充資訊：{user_message}"
         carry_file = _normalize_uploaded_file(router_context.get("uploaded_file")) or normalized_file
-        plan = _plan_with_optional_retry(merged_request, llm_cfg, libraries, carry_file)
+        plan = _plan_with_optional_retry(
+            merged_request,
+            llm_cfg,
+            libraries,
+            carry_file,
+            history_context,
+        )
         if plan.get("needs_clarification"):
             return {
                 "reply": (
@@ -446,7 +476,13 @@ def handle_section4_chat(
             router_context=router_context,
         )
 
-    plan = _plan_with_optional_retry(user_message, llm_cfg, libraries, normalized_file)
+    plan = _plan_with_optional_retry(
+        user_message,
+        llm_cfg,
+        libraries,
+        normalized_file,
+        history_context,
+    )
     if plan.get("needs_clarification"):
         return {
             "reply": (
