@@ -6,6 +6,7 @@ from section_1_patterns.schemas import RouteDecision
 
 ALLOWED_WORKFLOWS = ["calendar_query", "code_execution"]
 ALLOWED_TOOLS = ["search_web", "create_task"]
+ALLOWED_SKILLS = ["invoice_ocr"]
 
 
 def route_with_rules(user_message: str) -> RouteDecision:
@@ -51,7 +52,50 @@ def route_with_rules(user_message: str) -> RouteDecision:
         "今天有會議嗎",
         "calendar",
         "schedule",
+        "查空檔",
+        "查空閒",
     ]
+    workflow_availability_keywords = [
+        "有沒有空",
+        "有空嗎",
+        "是否有空",
+        "空檔",
+        "空嗎",
+        "available",
+        "availability",
+        "free time",
+        "free slot",
+    ]
+    workflow_datetime_keywords = [
+        "今天",
+        "明天",
+        "後天",
+        "這週",
+        "本週",
+        "下週",
+        "週",
+        "星期",
+        "禮拜",
+        "上午",
+        "下午",
+        "晚上",
+        "中午",
+        "整天",
+        "全天",
+        "點",
+        ":",
+        "am",
+        "pm",
+    ]
+    skill_invoice_direct_keywords = [
+        "發票辨識",
+        "辨識發票",
+        "發票ocr",
+        "invoice ocr",
+        "invoice recognition",
+    ]
+    skill_invoice_context_keywords = ["發票", "invoice"]
+    skill_invoice_field_keywords = ["發票內容", "統一編號", "統編", "抬頭", "ocr", "辨識", "價格", "金額", "price", "amount"]
     workflow_code_keywords = [
         "執行程式碼",
         "執行 python",
@@ -78,11 +122,36 @@ def route_with_rules(user_message: str) -> RouteDecision:
             target="search_web",
             reason="規則命中：網路搜尋相關關鍵字",
         )
+    if (
+        any(keyword in normalized for keyword in skill_invoice_direct_keywords)
+        or (
+            any(keyword in normalized for keyword in skill_invoice_context_keywords)
+            and any(keyword in normalized for keyword in skill_invoice_field_keywords)
+        )
+    ):
+        return RouteDecision(
+            action_type="skill",
+            target="invoice_ocr",
+            reason="規則命中：發票辨識需求，建議走 Skill",
+        )
     if any(keyword in normalized for keyword in workflow_calendar_keywords):
         return RouteDecision(
             action_type="workflow",
             target="calendar_query",
             reason="規則命中：行事曆查詢流程關鍵字",
+        )
+    if (
+        any(keyword in normalized for keyword in workflow_availability_keywords)
+        and (
+            any(keyword in normalized for keyword in workflow_datetime_keywords)
+            or bool(re.search(r"\d{4}[/-]\d{1,2}[/-]\d{1,2}", normalized))
+            or bool(re.search(r"\d{1,2}[/-]\d{1,2}", normalized))
+        )
+    ):
+        return RouteDecision(
+            action_type="workflow",
+            target="calendar_query",
+            reason="規則命中：空檔查詢（有空 + 日期時段）",
         )
     if (
         ("執行" in normalized or "跑" in normalized or "run" in normalized or "execute" in normalized)
@@ -111,11 +180,13 @@ def _build_router_prompt() -> str:
     return (
         "You are a strict intent router. Output JSON only.\\n"
         "Fields: action_type, target, reason.\\n"
-        "action_type must be one of: tool, workflow, llm.\\n"
+        "action_type must be one of: tool, workflow, skill, llm.\\n"
         f"If action_type=workflow, target must be one of: {', '.join(ALLOWED_WORKFLOWS)}.\\n"
         f"If action_type=tool, target must be one of: {', '.join(ALLOWED_TOOLS)}.\\n"
+        f"If action_type=skill, target must be one of: {', '.join(ALLOWED_SKILLS)}.\\n"
         "If action_type=llm, target must be 'none'.\\n"
         "Routing priority examples:\\n"
+        "- Invoice OCR / invoice field extraction request -> skill/invoice_ocr\\n"
         "- Calendar/schedule query -> workflow/calendar_query\\n"
         "- Any request to run/execute code (especially Python) -> workflow/code_execution\\n"
         "- Task creation or web search -> tool target\\n"
@@ -130,6 +201,8 @@ def _normalize_decision(decision: RouteDecision) -> RouteDecision:
         return RouteDecision(action_type="llm", target="none", reason="workflow target invalid, fallback to llm")
     if decision.action_type == "tool" and decision.target not in ALLOWED_TOOLS:
         return RouteDecision(action_type="llm", target="none", reason="tool target invalid, fallback to llm")
+    if decision.action_type == "skill" and decision.target not in ALLOWED_SKILLS:
+        return RouteDecision(action_type="llm", target="none", reason="skill target invalid, fallback to llm")
     if decision.action_type == "llm":
         return RouteDecision(action_type="llm", target="none", reason=decision.reason)
     return decision
@@ -140,7 +213,7 @@ def _coerce_decision_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     target = str(payload.get("target", "")).strip().lower()
     reason = str(payload.get("reason", "")).strip() or "router decision"
 
-    if action_type in {"tool", "workflow", "llm"}:
+    if action_type in {"tool", "workflow", "skill", "llm"}:
         normalized_target = target or "none"
         if action_type == "llm":
             normalized_target = "none"
@@ -163,6 +236,12 @@ def _coerce_decision_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
             "target": action_type,
             "reason": f"{reason} (auto-corrected from action_type)",
         }
+    if action_type in ALLOWED_SKILLS:
+        return {
+            "action_type": "skill",
+            "target": action_type,
+            "reason": f"{reason} (auto-corrected from action_type)",
+        }
 
     # Secondary fallback: infer from target if action_type is missing/invalid.
     if target in ALLOWED_WORKFLOWS:
@@ -174,6 +253,12 @@ def _coerce_decision_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if target in ALLOWED_TOOLS:
         return {
             "action_type": "tool",
+            "target": target,
+            "reason": f"{reason} (auto-inferred from target)",
+        }
+    if target in ALLOWED_SKILLS:
+        return {
+            "action_type": "skill",
             "target": target,
             "reason": f"{reason} (auto-inferred from target)",
         }

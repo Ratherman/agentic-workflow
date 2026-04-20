@@ -5,6 +5,7 @@
 2. 使用 LLM structured output 抽取日期/時間資訊
 3. 缺欄位時先反問補齊，再用 Yes/No 確認
 4. 最後呼叫 n8n webhook 並回傳結果到聊天室
+5. 啟用 `invoice_ocr` Skill，從發票圖片擷取指定欄位
 
 ## 啟動
 
@@ -18,8 +19,17 @@ python manager.py --section 3
 
 1. 打開 `Enable Webhook Mode`
 2. 在 `Calendar Query Webhook URL` 貼上 n8n 的 **Production URL**
+3. 若要做發票辨識，打開 `Enable Skills`
 
 > 建議不要用 `webhook-test` URL，測試模式只在 n8n 按下 Listen 時有效。
+
+## Skills（發票辨識）
+
+- Skill 檔案：`section_3_workflow_integration/skill.md`
+- 採 `on_demand` 載入：只有在「使用者提到發票辨識」且「同時上傳圖片」時才會啟用
+- 發票欄位由 `skill.md` 的 Output Schema 決定（例如：`tax_id`、`title`、`date`、`price`）
+
+> 若要改欄位，請直接修改 `skill.md`（課程設計讓學員可自行調整）。
 
 ## 對話流程
 
@@ -31,6 +41,12 @@ python manager.py --section 3
 3. 若缺資料，反問（例如：請補充時間區間）
 4. 收齊後顯示 Yes/No 確認
 5. Yes 後呼叫 webhook
+
+若是 `invoice_ocr`：
+1. 判斷為 Skill 意圖（發票 + 圖片）
+2. 檢查 `Enable Skills` 是否開啟
+3. 載入 `skill.md` 指引並執行 OCR 擷取
+4. 依 `skill.md` 回傳欄位結果
 
 ## 傳給 n8n 的 payload
 
@@ -77,6 +93,8 @@ python manager.py --section 3
 1. `幫我查行事曆，看看我這週五有沒有會議`
 2. `查一下 2026-03-27 下午有沒有會`
 3. `我要看明天整天的行程`
+4. `請幫我看看我在 4/21 下午有沒有空`
+5. `幫我辨識這張發票的統一編號、抬頭、日期`（請同時上傳圖片）
 
 ## 範例互動（可直接上課 Demo）
 

@@ -55,6 +55,10 @@ const state = {
       calendar_query_url: "",
       mode: "manual",
     },
+    skills: {
+      enabled: false,
+      available: ["invoice_ocr"],
+    },
     code_execution: {
       enabled: false,
       libraries: [...DEFAULT_CODE_LIBRARIES],
@@ -333,6 +337,8 @@ function loadStateFromStorage() {
       }
       state.config.webhook.workflows = ["calendar_query"];
       state.config.webhook.mode = state.config.webhook.mode === "auto" ? "auto" : "manual";
+      state.config.skills = { ...state.config.skills, ...(saved.config.skills || {}) };
+      state.config.skills.available = ["invoice_ocr"];
       state.config.code_execution = { ...state.config.code_execution, ...(saved.config.code_execution || {}) };
       if (!Array.isArray(state.config.code_execution.libraries) || state.config.code_execution.libraries.length === 0) {
         state.config.code_execution.libraries = [...DEFAULT_CODE_LIBRARIES];
@@ -495,7 +501,7 @@ function isConfirmPendingRoute(pending) {
   // Backward-compatible: some sections still use pending_route without stage.
   // If action_type is present and no collect stage, treat it as confirmation pending.
   const actionType = String(pending.action_type || "");
-  if (!stage && (actionType === "tool" || actionType === "workflow" || actionType === "code")) {
+  if (!stage && (actionType === "tool" || actionType === "workflow" || actionType === "skill" || actionType === "code")) {
     return true;
   }
   return false;
@@ -1209,6 +1215,25 @@ function renderWebhookControls(container, locked) {
     state.config.webhook.mode = value;
     renderConfigPreview();
   }, locked || !state.config.webhook.enabled));
+
+  container.appendChild(createCheckbox("Enable Skills", state.config.skills.enabled, (value) => {
+    state.config.skills.enabled = value;
+    renderConfigPreview();
+    renderControls();
+  }, locked));
+
+  const skillsBlock = document.createElement("div");
+  const skillsTitle = document.createElement("div");
+  skillsTitle.textContent = "Available Skills";
+  const skillsList = document.createElement("div");
+  skillsList.className = "option-grid";
+  skillsList.textContent = "invoice_ocr (發票辨識：統一編號 / 抬頭 / 日期)";
+  if (locked || !state.config.skills.enabled) {
+    skillsList.style.opacity = "0.5";
+  }
+  skillsBlock.appendChild(skillsTitle);
+  skillsBlock.appendChild(skillsList);
+  container.appendChild(skillsBlock);
 }
 
 function renderCodeExecutionControls(container, locked) {
@@ -1457,6 +1482,10 @@ function buildExportedConfig() {
       endpoints: {
         calendar_query: state.config.webhook.calendar_query_url || "",
       },
+    },
+    skills: {
+      enabled: state.currentSection >= 3 ? state.config.skills.enabled : false,
+      available: ["invoice_ocr"],
     },
     code_execution: {
       enabled: state.currentSection >= 4 ? state.config.code_execution.enabled : false,

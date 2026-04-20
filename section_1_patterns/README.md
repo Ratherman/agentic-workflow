@@ -1,7 +1,7 @@
 ﻿# Section 1 - Patterns + Structured Output
 
 這一節的目標：
-1. 用 Router 判斷使用者意圖（`tool` / `workflow` / `code` / `llm`）
+1. 用 Router 判斷使用者意圖（`tool` / `workflow` / `skill` / `code` / `llm`）
 2. 比較兩種結構化輸出（`prompt_only` vs `pydantic`）
 3. 只做判斷與 Yes/No 確認，不真正執行 action
 
@@ -29,6 +29,7 @@ python manager.py --section 1
 
 - `create_task`：`建立任務`、`新增任務`、`代辦`、`待辦`、`提醒我`
 - `search_web`：`查網路`、`上網查`、`搜尋網路`、`查資料`
+- `invoice_ocr`（Skill）：`發票辨識`、`辨識發票`、`發票內容`、`統一編號`、`抬頭`
 - `calendar_query`：`查行事曆`、`查日曆`、`看行程`、`排程`、`時間安排`
 - `code_execution`：`執行程式碼`、`執行 python`、`跑程式`、`code execution`
 
@@ -37,6 +38,8 @@ python manager.py --section 1
 - Tool
   - `create_task`
   - `search_web`
+- Skill
+  - `invoice_ocr`
 - Workflow
   - `calendar_query`
 - Code
@@ -55,20 +58,24 @@ python manager.py --section 1
 3. `幫我查行事曆，看看我這週五有沒有會議`
 預期：`[Router → WORKFLOW] calendar_query`
 
-4. `幫我執行一段 python，計算 1 到 100 的總和`
+4. `幫我辨識這張發票，抓統一編號和抬頭`
+預期：`[Router → SKILL] invoice_ocr`
+
+5. `幫我執行一段 python，計算 1 到 100 的總和`
 預期：`[Router → CODE] code_execution`
 
-5. `請解釋一下什麼是 RAG`
+6. `請解釋一下什麼是 RAG`
 預期：`[Router → LLM]`
 
 ## Yes / No 確認流程
 
-當 Router 判斷為 `tool` / `workflow` / `code` 時，聊天室會出現：
+當 Router 判斷為 `tool` / `workflow` / `skill` / `code` 時，聊天室會出現：
 
 `是否要執行這個動作？（Yes / No）`
 
 - `Yes`
   - Tool: 顯示「將於 Section 2 實作」
+  - Skill `invoice_ocr`: 顯示「將於 Section 3 實作」，並提醒在 Section 3 右側開啟 `Enable Skills`
   - Workflow `calendar_query`: 顯示「將於 Section 3 實作」
   - Code `code_execution`: 顯示「將於 Section 4 實作」
 - `No`

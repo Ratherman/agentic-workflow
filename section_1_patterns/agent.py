@@ -20,6 +20,11 @@ def _to_router_mode(config: Dict[str, Any]) -> str:
     return mode if mode in {"prompt_only", "pydantic"} else "pydantic"
 
 
+def _to_skill_enabled(config: Dict[str, Any]) -> bool:
+    skill_cfg = config.get("skills", {}) if isinstance(config, dict) else {}
+    return bool(skill_cfg.get("enabled", False))
+
+
 def _is_confirmation_message(text: str) -> Optional[bool]:
     normalized = text.strip().lower()
     if normalized == "yes":
@@ -47,9 +52,10 @@ def handle_section1_chat(
 ) -> Dict[str, Any]:
     llm_cfg = config.get("llm", {}) if isinstance(config, dict) else {}
     model = llm_cfg.get("model", "gpt-4o")
+    skill_enabled = _to_skill_enabled(config)
 
     # If user is replying to router confirmation, handle first.
-    if router_context and router_context.get("action_type") in {"tool", "workflow"}:
+    if router_context and router_context.get("action_type") in {"tool", "workflow", "skill"}:
         confirm = _is_confirmation_message(user_message)
         if confirm is True:
             action_type = router_context["action_type"]
@@ -57,6 +63,35 @@ def handle_section1_chat(
             if action_type == "tool":
                 return {
                     "reply": f"你選擇 Yes。Tool `{target}` 將於 Section 2 實作。",
+                    "router": {
+                        "action_type": action_type,
+                        "target": target,
+                        "reason": router_context.get("reason", ""),
+                        "mode": router_context.get("mode", "pydantic"),
+                    },
+                    "pending_route": None,
+                }
+            if action_type == "skill":
+                if target == "invoice_ocr" and not skill_enabled:
+                    return {
+                        "reply": (
+                            "你選擇 Yes。Skill `invoice_ocr` 將於 Section 3 正式使用。\n"
+                            "目前尚未開啟 `Enable Skills`，請先到右側 Control Panel 開啟後再測試，"
+                            "並記得同時上傳發票圖片。"
+                        ),
+                        "router": {
+                            "action_type": action_type,
+                            "target": target,
+                            "reason": router_context.get("reason", ""),
+                            "mode": router_context.get("mode", "pydantic"),
+                        },
+                        "pending_route": None,
+                    }
+                return {
+                    "reply": (
+                        "你選擇 Yes。Skill `invoice_ocr` 將於 Section 3 正式使用。\n"
+                        "請在同一則訊息中描述要辨識發票，並附上發票圖片。"
+                    ),
                     "router": {
                         "action_type": action_type,
                         "target": target,
@@ -138,6 +173,8 @@ def handle_section1_chat(
 
     if decision.action_type == "workflow" and decision.target == "code_execution":
         header = "[Router → CODE]"
+    elif decision.action_type == "skill":
+        header = "[Router → SKILL]"
     else:
         header = (
             f"[Router → {decision.action_type.upper()}]"
@@ -148,7 +185,7 @@ def handle_section1_chat(
 
     reason_line = f"Reason: {decision.reason}"
 
-    if decision.action_type in {"tool", "workflow"}:
+    if decision.action_type in {"tool", "workflow", "skill"}:
         reply = (
             f"{header}{target_part}\n"
             f"{reason_line}\n\n"

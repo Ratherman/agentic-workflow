@@ -2,6 +2,7 @@
 import os
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib import error, request
 
@@ -23,7 +24,6 @@ class CalendarExtractResult(BaseModel):
     has_time: bool
     date_phrase: str
     time_phrase: str
-
 
 WEEKDAY_MAP = {
     "一": 0,
@@ -51,6 +51,10 @@ CN_HOUR_MAP = {
     "十一": 11,
     "十二": 12,
 }
+
+_SKILL_FILE_PATH = Path(__file__).resolve().parent / "skill.md"
+
+DEFAULT_INVOICE_FIELDS = ["tax_id", "title", "date"]
 
 
 def _is_confirmation_message(text: str) -> Optional[bool]:
@@ -81,9 +85,15 @@ def _to_webhook_mode(config: Dict[str, Any]) -> str:
     return mode if mode in {"auto", "manual"} else "manual"
 
 
+def _to_skill_enabled(config: Dict[str, Any]) -> bool:
+    skill_cfg = config.get("skills", {}) if isinstance(config, dict) else {}
+    return bool(skill_cfg.get("enabled", False))
+
+
 def _looks_like_calendar_intent(text: str) -> bool:
-    lowered = (text or "").lower()
-    keywords = [
+    raw = (text or "").strip()
+    lowered = raw.lower()
+    direct_keywords = [
         "行事曆",
         "日曆",
         "行程",
@@ -92,8 +102,181 @@ def _looks_like_calendar_intent(text: str) -> bool:
         "schedule",
         "查詢時間",
         "排程",
+        "查空檔",
+        "查空閒",
     ]
-    return any(k in lowered for k in keywords)
+    availability_keywords = [
+        "有沒有空",
+        "有空嗎",
+        "是否有空",
+        "空檔",
+        "空嗎",
+        "available",
+        "availability",
+        "free time",
+        "free slot",
+    ]
+    datetime_keywords = [
+        "今天",
+        "明天",
+        "後天",
+        "這週",
+        "本週",
+        "下週",
+        "週",
+        "星期",
+        "禮拜",
+        "上午",
+        "下午",
+        "晚上",
+        "中午",
+        "整天",
+        "全天",
+        "點",
+        ":",
+        "am",
+        "pm",
+    ]
+
+    has_direct = any(k in lowered for k in direct_keywords)
+    has_availability = any(k in lowered for k in availability_keywords)
+    has_datetime = (
+        any(k in raw for k in datetime_keywords)
+        or bool(re.search(r"\d{4}[/-]\d{1,2}[/-]\d{1,2}", raw))
+        or bool(re.search(r"\d{1,2}[/-]\d{1,2}", raw))
+    )
+    return has_direct or (has_availability and has_datetime)
+
+
+def _looks_like_invoice_skill_intent(text: str) -> bool:
+    lowered = (text or "").lower()
+    direct_keywords = [
+        "發票辨識",
+        "辨識發票",
+        "發票ocr",
+        "invoice ocr",
+        "invoice recognition",
+    ]
+    context_keywords = ["發票", "invoice"]
+    field_keywords = ["辨識", "ocr", "統一編號", "統編", "抬頭", "發票內容", "價格", "金額", "price", "amount"]
+    return (
+        any(k in lowered for k in direct_keywords)
+        or (
+            any(k in lowered for k in context_keywords)
+            and any(k in lowered for k in field_keywords)
+        )
+    )
+
+
+def _load_invoice_skill_markdown() -> str:
+    if not _SKILL_FILE_PATH.exists():
+        return (
+            "# Invoice OCR Skill\n"
+            "請從圖片擷取統一編號、抬頭、日期，並以 JSON 回傳 tax_id/title/date。"
+        )
+    return _SKILL_FILE_PATH.read_text(encoding="utf-8")
+
+
+def _parse_skill_output_fields(skill_markdown: str) -> List[str]:
+    block_match = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", skill_markdown, flags=re.IGNORECASE)
+    if not block_match:
+        return DEFAULT_INVOICE_FIELDS.copy()
+
+    try:
+        payload = json.loads(block_match.group(1))
+    except Exception:
+        return DEFAULT_INVOICE_FIELDS.copy()
+
+    if not isinstance(payload, dict):
+        return DEFAULT_INVOICE_FIELDS.copy()
+
+    fields: List[str] = []
+    for key in payload.keys():
+        cleaned = str(key).strip()
+        if cleaned:
+            fields.append(cleaned)
+    return fields or DEFAULT_INVOICE_FIELDS.copy()
+
+
+def _normalize_skill_output(raw_payload: Dict[str, Any], fields: List[str]) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+    for field in fields:
+        value = raw_payload.get(field, "")
+        if value is None:
+            normalized[field] = ""
+        elif isinstance(value, str):
+            normalized[field] = value.strip()
+        else:
+            normalized[field] = str(value).strip()
+    return normalized
+
+
+def _extract_invoice_fields_with_skill(
+    user_message: str,
+    image_data_url: str,
+    llm_cfg: Dict[str, Any],
+) -> Dict[str, str]:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("缺少 OPENAI_API_KEY，暫時無法執行發票辨識 Skill。")
+
+    model = llm_cfg.get("model", "gpt-4o") if isinstance(llm_cfg, dict) else "gpt-4o"
+    skill_markdown = _load_invoice_skill_markdown()
+    fields = _parse_skill_output_fields(skill_markdown)
+    fields_text = ", ".join(fields)
+    system_prompt = (
+        "你是 Invoice OCR Skill Runner，僅在需要時讀取並遵守以下 skill 指引。\n"
+        "你只能回傳 JSON，不要加任何額外文字。\n"
+        f"JSON 欄位只能有：{fields_text}。\n"
+        "date 優先轉為 YYYY-MM-DD，無法判斷時保留原字串。\n\n"
+        f"{skill_markdown}"
+    )
+
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "請依 skill.md 規則辨識這張發票。\n"
+                            f"使用者補充：{user_message}"
+                        ),
+                    },
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            },
+        ],
+    )
+
+    raw = response.choices[0].message.content or "{}"
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise RuntimeError("Skill 回傳格式錯誤：不是 JSON 物件。")
+    return _normalize_skill_output(raw_payload=payload, fields=fields)
+
+
+def _format_invoice_skill_result(result: Dict[str, str]) -> str:
+    lines = ["[Skill Executed] invoice_ocr"]
+    for field, value in result.items():
+        display_value = value or "(未辨識)"
+        lines.append(f"- {field}: {display_value}")
+    lines.append("")
+    lines.append("欄位由 skill.md 的 Output Schema 決定；修改 skill.md 後會直接生效。")
+    return "\n".join(lines)
+
+
+def _to_invoice_skill_error_message(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "api key" in text or "authentication" in text or "401" in text:
+        return "OCR 驗證失敗，請確認 OPENAI_API_KEY。"
+    return "發票辨識暫時失敗，請稍後再試。"
 
 
 def _heuristic_extract(text: str) -> CalendarExtractResult:
@@ -440,6 +623,7 @@ def handle_section3_chat(
 ) -> Dict[str, Any]:
     llm_cfg = config.get("llm", {}) if isinstance(config, dict) else {}
     webhook_mode = _to_webhook_mode(config)
+    skill_enabled = _to_skill_enabled(config)
 
     if router_context and router_context.get("stage") == "collect_datetime":
         extracted = _extract_datetime_with_llm(user_message, llm_cfg)
@@ -520,6 +704,73 @@ def handle_section3_chat(
             slot=slot,
             original_query=router_context.get("original_query", ""),
         )
+
+    if _looks_like_invoice_skill_intent(user_message):
+        if not image_data_url:
+            return {
+                "reply": (
+                    "[Router → SKILL] invoice_ocr\n"
+                    "Reason: 偵測到發票辨識需求。\n\n"
+                    "請同時上傳發票圖片，我才能執行 Invoice OCR Skill。"
+                ),
+                "router": {
+                    "action_type": "skill",
+                    "target": "invoice_ocr",
+                    "reason": "invoice skill detected but missing image",
+                    "mode": "structured",
+                },
+                "pending_route": None,
+            }
+
+        if not skill_enabled:
+            return {
+                "reply": (
+                    "[Router → SKILL] invoice_ocr\n"
+                    "Reason: 偵測到發票辨識需求。\n\n"
+                    "你尚未開啟 `Enable Skills`。\n"
+                    "請到右側 Control Panel 開啟後，再重新送出同一則訊息與圖片。"
+                ),
+                "router": {
+                    "action_type": "skill",
+                    "target": "invoice_ocr",
+                    "reason": "invoice skill detected but skills disabled",
+                    "mode": "structured",
+                },
+                "pending_route": None,
+            }
+
+        try:
+            extracted = _extract_invoice_fields_with_skill(
+                user_message=user_message,
+                image_data_url=image_data_url,
+                llm_cfg=llm_cfg,
+            )
+            return {
+                "reply": _format_invoice_skill_result(extracted),
+                "router": {
+                    "action_type": "skill",
+                    "target": "invoice_ocr",
+                    "reason": "invoice skill executed",
+                    "mode": "structured",
+                },
+                "pending_route": None,
+            }
+        except Exception as exc:  # noqa: BLE001
+            safe_error = _to_invoice_skill_error_message(exc)
+            return {
+                "reply": (
+                    "[Router → SKILL] invoice_ocr\n"
+                    "Reason: 偵測到發票辨識需求。\n\n"
+                    f"Skill 執行失敗：{safe_error}"
+                ),
+                "router": {
+                    "action_type": "skill",
+                    "target": "invoice_ocr",
+                    "reason": f"invoice skill failed: {safe_error}",
+                    "mode": "structured",
+                },
+                "pending_route": None,
+            }
 
     if _looks_like_calendar_intent(user_message):
         extracted = _extract_datetime_with_llm(user_message, llm_cfg)
